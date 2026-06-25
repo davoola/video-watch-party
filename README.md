@@ -1,0 +1,217 @@
+# 私密影院 (Video Watch Party)
+
+一个只为两个人准备的私密在线观影网站：登录后自动扫描本地视频目录，双方可以同步观看同一部视频（播放/暂停/拖进度条都会实时同步），并在播放页实时聊天——支持 Markdown 格式、表情、图片、弹幕，以及"对方正在看哪部视频"的在线状态提示。
+
+不开放注册，账号由管理员通过命令行脚本预先创建，密码使用 bcrypt 哈希存储。
+
+## 功能特性
+
+- **登录鉴权**：用户名/密码存储在本地文件（bcrypt 哈希），不提供注册入口；登录失败次数过多会临时锁定
+- **视频库**：递归扫描指定目录下的所有视频文件，列表页展示自动生成的预览缩略图
+- **同步播放**：双方打开同一个视频会进入同一个"房间"，播放、暂停、拖动进度条都会实时同步给对方，并定期心跳纠正长时间播放后的进度漂移
+- **实时聊天**：
+  - 支持基础 Markdown 语法（`**粗体**`、`*斜体*`、`~~删除线~~`、`` `代码` ``、自动识别链接）
+  - 支持表情选择器
+  - 支持发送图片（服务端会校验图片真实格式，不只是看文件扩展名）
+  - 支持换行（Shift+Enter 换行，Enter 发送）
+  - 支持弹幕：聊天内容可以选择以弹幕形式飘过视频画面，每条弹幕随机配色
+- **在线状态**：
+  - 视频列表页能看到对方"正在观看《XXX》/ 浏览列表中 / 不在线"，并提供"加入TA观看"快捷按钮
+  - 播放页能看到对方是否在同一个房间里，加入/离开都有实时提示
+- **响应式设计**：PC 端和移动端均做了适配，移动端聊天面板可收起为抽屉，未读消息有数字提示
+- **安全防护**：路径穿越防护、图片上传文件签名校验、Session 防固定攻击、HttpOnly/SameSite Cookie 等（详见[安全设计](#安全设计)）
+
+## 技术栈
+
+- 后端：Node.js + Express 5 + Socket.IO 4
+- 鉴权：express-session + bcryptjs
+- 图片处理：multer（上传）+ ffmpeg（视频缩略图，可选）
+- 前端：原生 HTML/CSS/JavaScript，无构建工具，无框架依赖
+
+## 环境要求
+
+- Node.js 18 及以上
+- （可选）[ffmpeg](https://ffmpeg.org/)：用于生成视频预览缩略图。没有安装也完全不影响登录、播放、聊天等核心功能，只是列表页会显示默认的播放图标而不是真实缩略图。
+
+检查是否已安装 ffmpeg：
+
+```bash
+ffmpeg -version
+```
+
+没有的话，Ubuntu/Debian 系统可以这样安装：
+
+```bash
+sudo apt update && sudo apt install ffmpeg
+```
+
+## 安装步骤
+
+### 1. 安装依赖
+
+```bash
+npm install
+```
+
+### 2. 配置环境变量
+
+复制配置模板并编辑：
+
+```bash
+cp .env.example .env
+```
+
+打开 `.env`，至少需要修改这两项：
+
+```bash
+SESSION_SECRET=          # 用下面的命令生成一个随机值填进去
+VIDEO_DIR=/真实存在的视频目录绝对路径
+```
+
+生成随机密钥：
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+`.env` 完整字段说明：
+
+| 字段 | 说明 |
+|---|---|
+| `PORT` | 服务监听端口，默认 3000 |
+| `SESSION_SECRET` | Session 签名密钥，必须是随机字符串且不少于 16 位 |
+| `VIDEO_DIR` | 视频根目录的绝对路径，会递归扫描其下所有视频文件 |
+| `NODE_ENV` | `development` 或 `production`；生产环境下 Cookie 会强制要求 HTTPS |
+
+### 3. 创建账号
+
+不提供注册页面，只能通过命令行脚本创建（建议正好创建两个账号）：
+
+```bash
+npm run create-user
+```
+
+按提示输入用户名和密码（密码输入时不会显示在终端上，且需要二次确认）。再运行一次即可创建第二个账号。
+
+### 4. 启动服务
+
+```bash
+npm start
+```
+
+看到下面的输出说明启动成功：
+
+```
+视频同步观影服务已启动: http://localhost:3000
+视频目录: /your/video/dir
+运行模式: development
+```
+
+浏览器打开 `http://localhost:3000`，用刚创建的账号登录即可。
+
+### 5.（可选）放置 Logo 和网站图标
+
+- Logo：把图片命名为 `logo.png`，放进 `public/images/logo.png`（建议高度 48-96px、透明背景 PNG）
+- 网站图标（favicon）：把 `favicon.ico` 放在 `public/favicon.ico`（**注意是 `public/` 根目录下，不是放进 `images/` 文件夹里**），这样浏览器才能按标准约定自动找到它，所有页面统一生效
+
+这两个文件不存在也不会报错，页面会自动隐藏 logo 位置、浏览器标签显示默认图标。
+
+## 目录结构
+
+```
+video-watch-party/
+├── .env.example              # 环境变量配置模板
+├── package.json
+├── config/
+│   └── users.json            # 用户名 + bcrypt 密码哈希（由 create-user 脚本生成）
+├── src/
+│   ├── server.js             # 主入口：整合所有路由、Session、Socket.IO 鉴权
+│   ├── config.js             # 读取并校验环境变量
+│   ├── users.js               # 读取用户文件、校验密码
+│   ├── auth.js                 # 登录/登出路由、鉴权中间件、登录失败限流
+│   ├── videoScanner.js       # 递归扫描视频目录，防路径穿越
+│   ├── videoStream.js        # HTTP Range 流式传输视频，支持 ETag/304 缓存
+│   ├── videoApi.js            # 视频列表 API
+│   ├── thumbnail.js           # 视频缩略图生成与缓存（ffmpeg，软依赖）
+│   ├── chatUpload.js          # 聊天图片上传与访问（文件签名校验）
+│   └── socket.js               # Socket.IO：播放同步、聊天、房间在线状态、大厅在线状态
+├── public/
+│   ├── login.html / index.html / player.html
+│   ├── images/                # 放置 logo.png（favicon.ico 放在 public/ 根目录）
+│   ├── css/style.css
+│   └── js/
+│       ├── login.js / index.js / player.js
+│       └── markdown.js        # 聊天消息的安全 Markdown 渲染（防 XSS）
+└── scripts/
+    ├── createUser.js          # 创建/更新账号的命令行工具
+    └── optimizeVideo.js       # 可选：视频快速启动优化工具（见下文）
+```
+
+## 视频加载速度优化
+
+如果觉得视频播放启动得比较慢（尤其是码率明明不高、但点开要等好几秒才开始播放），最常见的原因是 **MP4 文件的索引信息（moov atom）被放在了文件末尾**——浏览器需要先摸到文件尾部才能开始播放，文件越大这个延迟越明显。这常见于手机直接录制、某些录屏/转码工具导出的视频。
+
+可以用项目自带的小工具做无损修复（只重新排列容器结构，不重新编码画面/声音，速度很快）：
+
+```bash
+node scripts/optimizeVideo.js 你的视频.mp4
+```
+
+会在同目录生成 `你的视频.faststart.mp4`，确认播放没问题后，自行决定是否替换原文件。这个工具需要 ffmpeg。
+
+## 安全设计
+
+| 风险点 | 防护方式 |
+|---|---|
+| 密码泄露 | bcrypt 哈希存储，永不存明文；校验时无论用户名是否存在都会执行一次哈希比对，降低时序侧信道风险 |
+| 路径穿越 | 视频文件、聊天图片的真实路径都会校验确实落在指定根目录内，拒绝 `../` 等穿越尝试 |
+| 伪造图片上传 | 不信任客户端声称的文件扩展名/Content-Type，读取文件头"魔数"校验真实格式；上传文件名由服务端随机生成，不使用用户提供的文件名 |
+| 未授权访问 | 所有路由（含视频流、缩略图、聊天图片、WebSocket 连接）都会校验登录状态 |
+| 暴力破解登录 | 同一 IP+用户名连续失败 5 次后锁定 15 分钟 |
+| Session 劫持/固定 | Cookie 设置 `HttpOnly`、`SameSite=Lax`；登录成功后重新生成 Session ID |
+| 聊天 XSS | 聊天消息的 Markdown 渲染先转义全部 HTML 特殊字符，再叠加自己可控的安全标签；不支持任意 HTML、不支持可能被用来注入 `javascript:` 协议的链接语法 |
+| 跨站点滥用 | 响应头设置 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` |
+
+## 部署到公网时的建议
+
+1. **务必上 HTTPS**：用 Nginx/Caddy 做反向代理 + Let's Encrypt 证书。否则密码和视频流都是裸传输的。
+2. **不建议直接对公网开放端口**：这个网站设计上只给两个人用，更推荐用 [Tailscale](https://tailscale.com)、WireGuard 之类的工具组个私人内网，根本不暴露公网端口，比加固一个公网服务安全得多。
+3. 如果一定要公网部署，建议加防火墙 IP 白名单，并用 `pm2` 或 `systemd` 管理进程，保证崩溃后能自动重启。
+
+### 用 Nginx 做反向代理
+
+项目根目录的 `nginx.conf.example` 是一份可以直接参考的配置文件，包含两个容易被忽略但很关键的点：
+
+- **WebSocket 升级头**（`Upgrade` / `Connection: upgrade`）：少了这两行，Socket.IO 连不上，播放同步、聊天、在线状态这些实时功能全部失效（但页面本身还是能打开的，容易让人摸不着头脑）。
+- **`X-Forwarded-Proto` 等头**：要配合 `.env` 里的 `TRUST_PROXY=true` 一起生效，否则即使配了也不会被信任，见下方说明。
+
+**用了 Nginx 反代之后，记得在 `.env` 里把 `TRUST_PROXY` 设为 `true`：**
+
+```bash
+TRUST_PROXY=true
+```
+
+这一项默认是 `false`，因为只有真的有反向代理挡在前面时才能开启——否则客户端能直接伪造 `X-Forwarded-*` 头，冒充任意 IP 或冒充 HTTPS 连接，是个安全隐患。具体原理见下面"常见问题"里的说明。
+
+## 常见问题
+
+**Q: 配置了 `NODE_ENV=production` 并接上 Nginx 反代后，输入用户名密码无法跳转到首页？**
+A: 几乎可以肯定是 Cookie 的 `Secure` 属性导致的——浏览器规则规定，标记为 `Secure` 的 Cookie 只能在 HTTPS 连接下被接受。如果 Nginx 暂时还没配 HTTPS（只是普通 HTTP 反代），登录请求本身在服务端是成功的，但浏览器会直接拒绝存储这个登录态 Cookie，于是跳转到首页时又被当成"未登录"打回登录页。
+
+解决方法：在 `.env` 里加上 `TRUST_PROXY=true` 并重启服务（同时确保 Nginx 配置里带上了 `X-Forwarded-Proto` 头，参考 `nginx.conf.example`）。加上这一项后，Cookie 是否带 `Secure` 标记会根据实际连接是否为 HTTPS 动态判断，而不是简单粗暴地跟 `NODE_ENV` 绑定——这样不管你的 Nginx 当前是 HTTP 还是 HTTPS，登录都能正常跳转，同时一旦升级到 HTTPS，安全性会自动跟着提升。
+
+**Q: 视频列表里没有显示缩略图，只看到默认的播放图标？**
+A: 服务器没装 ffmpeg，或者该视频文件无法被 ffmpeg 正常解码。这不影响播放和其他功能，装好 ffmpeg 重启服务即可（参考[环境要求](#环境要求)）。
+
+**Q: 移动端点击播放后视频自动全屏，看不到聊天了？**
+A: 这是部分移动浏览器（尤其 iOS Safari）的默认行为，项目里已经给 `<video>` 标签加了 `playsinline` 相关属性来阻止这个行为。如果仍有问题，请检查浏览器版本，或反馈具体机型/浏览器。
+
+**Q: 忘记密码怎么办？**
+A: 没有"忘记密码"流程（设计上就不提供注册和找回，降低攻击面）。重新运行 `npm run create-user`，输入同一个用户名即可覆盖更新密码。
+
+**Q: 想加更多账号，能超过两个人吗？**
+A: 技术上可以（`npm run create-user` 可以一直创建新账号），但同步播放和聊天的房间设计是按"视频 ID"分房间的，超过两人进入同一个视频会一起同步、一起聊天，没有针对多人场景做特别优化（比如没有限制房间人数）。
+
+## License
+
+仅供个人/私人使用。

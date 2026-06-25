@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>登录 - 私密影院</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="center-screen">
+      <form class="card" id="loginForm">
+        <div class="brand-lockup">
+          <img src="/images/logo.png" alt="" class="brand-logo-large" onerror="this.style.display='none'">
+          <h1>私 密 影 院</h1>
+        </div>
+        <div class="field">
+          <label for="username">用户名</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn-primary">登录</button>
+        <div class="error-msg" id="errorMsg"></div>
+      </form>
+    </div>
+    <footer class="copyright">© 2026 PrivateCinema. All rights reserved.</footer>
+  </div>
+  <script src="/js/login.js"></script>
+</body>
+</html>

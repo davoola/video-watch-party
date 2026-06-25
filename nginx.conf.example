@@ -1,0 +1,75 @@
+# nginx 反向代理示例配置
+#
+# 用法：
+#   1. 把这个文件内容放进 /etc/nginx/sites-available/video-watch-party（文件名随意）
+#   2. 把下面的 server_name 改成你自己的域名或 IP
+#   3. ln -s /etc/nginx/sites-available/video-watch-party /etc/nginx/sites-enabled/
+#   4. nginx -t && systemctl reload nginx
+#   5. 在项目的 .env 里把 TRUST_PROXY 设为 true，重启 Node 服务
+#
+# 注意：下面这份配置本身只是普通 HTTP（没有 HTTPS），可以先用这个验证反代本身能跑通，
+# 后续强烈建议用 certbot（Let's Encrypt）申请证书，把 listen 改成 443 ssl，
+# 否则密码和视频流都是裸传输的。
+
+server {
+    listen 80;
+    server_name your-domain-or-ip;
+
+    # 上传聊天图片时，请求体可能比 nginx 默认的 1MB 限制大，需要放宽
+    # （要跟项目里 chatUpload.js 的 5MB 上限保持一致或更大）
+    client_max_body_size 10M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+
+        # 下面这两行是 Socket.IO（WebSocket）能正常工作的关键，千万不要漏掉，
+        # 否则播放同步、聊天、在线状态这些实时功能会连不上或不停重连。
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # 下面这几行让 Node 应用能拿到真实的客户端信息，
+        # 必须配合 .env 里的 TRUST_PROXY=true 才会被 Express 采信。
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # 视频走的是分段的 Range 请求，不需要 nginx 自己再做一层缓冲，
+        # 关掉缓冲能让大文件流式传输得更顺畸（避免 nginx 等整个响应攒够了再转发）。
+        proxy_buffering off;
+    }
+}
+
+# ============================================================
+# 如果已经用 certbot 配好了证书，把上面那个 server block 替换成下面这样：
+# （certbot --nginx 通常会自动帮你改成类似结构，这里仅供参考）
+# ============================================================
+#
+# server {
+#     listen 80;
+#     server_name your-domain-or-ip;
+#     return 301 https://$host$request_uri;
+# }
+#
+# server {
+#     listen 443 ssl;
+#     server_name your-domain-or-ip;
+#
+#     ssl_certificate     /etc/letsencrypt/live/your-domain-or-ip/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/your-domain-or-ip/privkey.pem;
+#
+#     client_max_body_size 10M;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:3000;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_buffering off;
+#     }
+# }

@@ -1,0 +1,21 @@
+{
+  "name": "video-watch-party",
+  "version": "1.0.1",
+  "description": "私人双人视频同步观看 + 在线聊天网站",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "create-user": "node scripts/createUser.js",
+    "optimize-video": "node scripts/optimizeVideo.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "multer": "^2.2.0",
+    "socket.io": "^4.8.3"
+  }
+}

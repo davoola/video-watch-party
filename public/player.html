@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>正在播放 - 私密影院</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="topbar">
+    <a href="/index.html" class="back-link">← 返回视频列表</a>
+    <div class="user-area">
+      <span id="meText"></span>
+      <span id="presenceText"></span>
+    </div>
+  </div>
+
+  <div class="player-layout">
+    <div class="player-main">
+      <div class="video-wrap">
+        <video
+          id="player"
+          controls
+          preload="metadata"
+          playsinline
+          webkit-playsinline
+          x5-playsinline
+          x5-video-player-type="h5"
+          x5-video-player-fullscreen="false"
+        ></video>
+        <div class="danmaku-overlay" id="danmakuOverlay"></div>
+      </div>
+      <div class="video-toolbar">
+        <label class="danmaku-toggle">
+          <input type="checkbox" id="danmakuToggle" checked>
+          弹幕显示
+        </label>
+      </div>
+    </div>
+
+    <div class="chat-panel" id="chatPanel">
+      <button class="chat-toggle-bar" id="chatToggleBar">
+        <span>💬 聊天</span>
+        <span class="unread-badge" id="unreadBadge" hidden>0</span>
+        <span class="chevron" id="chatChevron">▾</span>
+      </button>
+
+      <div class="chat-header" id="videoNameText">正在加载...</div>
+
+      <div class="chat-messages" id="chatMessages"></div>
+
+      <div class="emoji-picker" id="emojiPicker" hidden></div>
+
+      <div class="chat-input-area">
+        <div class="chat-toolbar-row">
+          <button class="icon-btn" id="emojiBtn" title="表情" type="button">😊</button>
+          <button class="icon-btn" id="imageBtn" title="发送图片" type="button">🖼️</button>
+          <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+        </div>
+        <div class="chat-send-row">
+          <textarea id="chatInput" placeholder="说点什么..." maxlength="2000" rows="1"></textarea>
+          <button id="sendBtn">发送</button>
+        </div>
+        <div class="chat-input-hint">支持 **粗体** *斜体* `代码` · Shift+Enter 换行</div>
+      </div>
+    </div>
+  </div>
+  <div>	
+    <footer class="copyright">© 2026 PrivateCinema. All rights reserved.</footer>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/markdown.js"></script>
+  <script src="/js/player.js"></script>
+</body>
+</html>
