@@ -219,7 +219,7 @@ function spawnDanmaku(rawText) {
   const item = document.createElement('div');
   item.className = 'danmaku-item';
   // 复用同一套安全渲染逻辑，弹幕里也能看到加粗/斜体等效果
-  item.innerHTML = renderMarkdown(rawText.slice(0, 100)); // 弹幕长度截断，避免超长文本影响观感
+  item.innerHTML = renderInlineMarkdown(rawText.slice(0, 100)); // 弹幕长度截断，避免超长文本影响观感
   item.style.color = pickRandomDanmakuColor();
 
   const overlayHeight = danmakuOverlay.clientHeight || 300;
