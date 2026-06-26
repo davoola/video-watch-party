@@ -22,6 +22,11 @@ const emojiBtn = document.getElementById('emojiBtn');
 const emojiPicker = document.getElementById('emojiPicker');
 const imageBtn = document.getElementById('imageBtn');
 const imageInput = document.getElementById('imageInput');
+const chatResizer = document.getElementById('chatResizer');
+
+// 统一的响应式断点判断：matches === true 表示当前是移动布局。
+// 和 CSS 里的 @media (max-width: 860px) 保持一致，全文件多处用到（弹幕速度、聊天面板宽度/折叠等）。
+const mobileLayoutQuery = window.matchMedia('(max-width: 860px)');
 
 videoNameText.textContent = videoName;
 videoEl.src = `/video-stream/${encodeURIComponent(videoId)}`;
@@ -230,9 +235,7 @@ function spawnDanmaku(rawText) {
   item.style.top = `${lane * laneHeight + 4}px`;
 
   // 只在 PC 端放慢弹幕速度，移动端保持原速度（用户反馈移动端速度已经合适）。
-  // 复用现有的响应式断点（860px），与 CSS 里判断"是否进入移动布局"的标准保持一致。
-  const isMobileLayout = window.matchMedia('(max-width: 860px)').matches;
-  const baseDuration = isMobileLayout ? 6 : 8;
+  const baseDuration = mobileLayoutQuery.matches ? 6 : 8;
   const duration = baseDuration + Math.min(rawText.length / 8, 6);
   item.style.animationDuration = `${duration}s`;
 
@@ -334,8 +337,96 @@ function resetUnread() {
 }
 
 // 默认在窄屏上把聊天面板折叠，留出更多空间看视频；桌面端这个 class 不会产生视觉影响
-if (window.matchMedia('(max-width: 860px)').matches) {
+if (mobileLayoutQuery.matches) {
   chatPanel.classList.add('collapsed');
 }
+
+// ==================== 聊天面板宽度拖拽调整（仅桌面布局） ====================
+const CHAT_WIDTH_STORAGE_KEY = 'vwp_chat_width';
+const CHAT_WIDTH_MIN = 240;
+const CHAT_WIDTH_DEFAULT = 320;
+
+function getChatWidthMax() {
+  // 最大不超过窗口宽度的 60%，且不超过 640px，避免把视频区挤得太小
+  return Math.min(640, window.innerWidth * 0.6);
+}
+
+function setChatWidth(px) {
+  const clamped = Math.max(CHAT_WIDTH_MIN, Math.min(px, getChatWidthMax()));
+  chatPanel.style.width = clamped + 'px';
+  return clamped;
+}
+
+// 根据当前是桌面布局还是移动布局，决定要不要应用拖拽宽度：
+// 移动端布局靠 CSS 的 width:100% 规则铺满宽度，这里必须清掉内联 style.width，
+// 否则内联样式的优先级比 CSS 规则高，会让移动端布局错乱（聊天面板宽度不对）。
+function applyChatWidthForViewport() {
+  if (mobileLayoutQuery.matches) {
+    chatPanel.style.width = '';
+    return;
+  }
+  const saved = parseFloat(localStorage.getItem(CHAT_WIDTH_STORAGE_KEY));
+  setChatWidth(Number.isFinite(saved) ? saved : CHAT_WIDTH_DEFAULT);
+}
+
+applyChatWidthForViewport();
+// 监听断点切换：比如把浏览器窗口从桌面宽度拖小到移动宽度（不刷新页面也要正确响应）
+mobileLayoutQuery.addEventListener('change', applyChatWidthForViewport);
+
+let isDraggingChat = false;
+
+chatResizer.addEventListener('mousedown', (e) => {
+  if (mobileLayoutQuery.matches) return; // 移动布局下手柄本身也被 CSS 隐藏了，这里是双重保险
+  isDraggingChat = true;
+  chatResizer.classList.add('is-dragging');
+  document.body.classList.add('is-resizing-chat');
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDraggingChat) return;
+  // 聊天面板在右侧，宽度 = 视口宽度 - 鼠标的水平坐标
+  const newWidth = setChatWidth(window.innerWidth - e.clientX);
+  localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(newWidth));
+});
+
+window.addEventListener('mouseup', stopDraggingChat);
+
+function stopDraggingChat() {
+  if (!isDraggingChat) return;
+  isDraggingChat = false;
+  chatResizer.classList.remove('is-dragging');
+  document.body.classList.remove('is-resizing-chat');
+}
+
+// 双击手柄恢复默认宽度，方便一键复位
+chatResizer.addEventListener('dblclick', () => {
+  if (mobileLayoutQuery.matches) return;
+  setChatWidth(CHAT_WIDTH_DEFAULT);
+  localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(CHAT_WIDTH_DEFAULT));
+});
+
+// 触屏支持（比如宽屏触屏笔记本/平板横屏时仍处于桌面布局）
+chatResizer.addEventListener('touchstart', (e) => {
+  if (mobileLayoutQuery.matches) return;
+  isDraggingChat = true;
+  chatResizer.classList.add('is-dragging');
+  document.body.classList.add('is-resizing-chat');
+}, { passive: true });
+
+window.addEventListener('touchmove', (e) => {
+  if (!isDraggingChat || !e.touches[0]) return;
+  const newWidth = setChatWidth(window.innerWidth - e.touches[0].clientX);
+  localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, String(newWidth));
+}, { passive: true });
+
+window.addEventListener('touchend', stopDraggingChat);
+
+// 窗口本身被拉伸时，确保当前宽度依然落在合法范围内（比如窗口缩小导致原宽度超过了新的最大值上限）
+window.addEventListener('resize', () => {
+  if (mobileLayoutQuery.matches) return;
+  const current = parseFloat(chatPanel.style.width);
+  if (Number.isFinite(current)) setChatWidth(current);
+});
 
 loadMe();
