@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
-const { CHAT_UPLOAD_DIR } = require('./config');
+const { CHAT_UPLOAD_DIR, CHAT_IMAGE_RETENTION_DAYS } = require('./config');
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -103,4 +103,42 @@ function serveChatImage(req, res) {
   });
 }
 
-module.exports = { handleChatImageUpload, serveChatImage, isValidChatImageFilename, MAX_FILE_SIZE };
+module.exports = { handleChatImageUpload, serveChatImage, isValidChatImageFilename, MAX_FILE_SIZE, cleanupOldChatImages };
+
+// 清理超过保留期限的聊天图片。用异步 API（不是 readdirSync/statSync/unlinkSync），
+// 避免在文件数量较多时同步阻塞事件循环。
+// CHAT_IMAGE_RETENTION_DAYS 设为 0 表示关闭自动清理（保留所有图片）。
+async function cleanupOldChatImages() {
+  if (!CHAT_IMAGE_RETENTION_DAYS || CHAT_IMAGE_RETENTION_DAYS <= 0) return;
+
+  const maxAgeMs = CHAT_IMAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  let files;
+  try {
+    files = await fs.promises.readdir(CHAT_UPLOAD_DIR);
+  } catch (err) {
+    console.error('[聊天图片清理] 读取目录失败:', err.message);
+    return;
+  }
+
+  let deletedCount = 0;
+  for (const file of files) {
+    const fullPath = path.join(CHAT_UPLOAD_DIR, file);
+    try {
+      const stat = await fs.promises.stat(fullPath);
+      if (!stat.isFile()) continue;
+      if (now - stat.mtimeMs > maxAgeMs) {
+        await fs.promises.unlink(fullPath);
+        deletedCount++;
+      }
+    } catch (err) {
+      // 文件可能在检查过程中被并发删除/读取失败，忽略单个文件的错误，不影响其他文件的清理
+      console.error(`[聊天图片清理] 处理文件失败 ${file}:`, err.message);
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`[聊天图片清理] 已删除 ${deletedCount} 张超过 ${CHAT_IMAGE_RETENTION_DAYS} 天的聊天图片`);
+  }
+}

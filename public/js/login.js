@@ -1,5 +1,13 @@
 const form = document.getElementById('loginForm');
 const errorMsg = document.getElementById('errorMsg');
+const brandLogo = document.getElementById('brandLogo');
+
+// logo.png 不存在或加载失败时直接隐藏这个图片位置，不影响登录功能。
+// 用 addEventListener 而不是内联 onerror 属性，因为内联事件处理器
+// 会被 Content-Security-Policy 的 script-src 'self' 拦截。
+brandLogo.addEventListener('error', () => {
+  brandLogo.style.display = 'none';
+});
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();

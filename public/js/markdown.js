@@ -50,7 +50,11 @@ function applyInline(line, includeImages) {
 
   let text = line;
 
-  // 行内代码 `code`：最先处理并占位保护，避免内容被后面的粗体/斜体/链接规则误处理
+  // 行内代码 `code`：最先处理并占位保护，避免内容被后面的粗体/斜体/链接规则误处理。
+  // 注意：这里的 code 此时已经是 escapeHtml() 处理过的转义文本了
+  // （applyInline 收到的 line 参数，调用方在更早的 renderMarkdown/renderInlineMarkdown 里
+  // 已经对整段原始输入做过一次 escapeHtml），所以直接拼进 <code>...</code> 是安全的，
+  // 不需要在这里再转义一次——这行注释就是为了避免日后有人看不出这一点，误加或误删转义逻辑。
   text = text.replace(/`([^`\n]+)`/g, (_, code) => save('<code>' + code + '</code>'));
 
   // 图片 ![alt](url) —— 必须在链接规则之前处理，否则会被链接规则提前吃掉语法结构

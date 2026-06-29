@@ -33,7 +33,13 @@ videoEl.src = `/video-stream/${encodeURIComponent(videoId)}`;
 
 let myUsername = '';
 let isRemoteAction = false; // true 时表示当前事件是远程指令触发的，不要再广播出去
-const SYNC_TOLERANCE = 0.6; // 秒，时间差在此范围内不强制跳转，避免抖动
+
+// 同步容忍度按事件类型区分：
+// - play/pause/seek 是用户主动操作，希望对方尽快精确跟随，容忍度小一点
+// - heartbeat 只是周期性纠偏（双方都在定时互相广播当前进度），如果用两个一样紧的容忍度，
+//   网络延迟不对称时容易出现"你纠正我、我又纠正你"的来回拉扯式抖动，所以心跳给更宽松的容忍度
+const SYNC_TOLERANCE_ACTION = 0.6; // 秒
+const SYNC_TOLERANCE_HEARTBEAT = 2.0; // 秒
 const HEARTBEAT_INTERVAL = 5000; // 每 5 秒主动同步一次进度，纠正漂移
 
 // ---- 当前用户名 ----
@@ -70,6 +76,17 @@ socket.on('room-presence', ({ members }) => {
 
 socket.on('chat-system', ({ text }) => appendSystemMessage(text));
 
+// 刚加入房间时，服务端会把这个房间最近的聊天记录发过来（重新整理过的，按时间顺序）。
+// 用一条分隔线把"历史消息"和"接下来的新消息"区分开，避免让人误以为是刚刚发生的对话。
+socket.on('chat-history', ({ messages }) => {
+  if (!messages || messages.length === 0) return;
+  messages.forEach((msg) => {
+    appendChatMessage(msg, msg.from === myUsername);
+  });
+  appendHistoryDivider();
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+});
+
 socket.on('chat-message', (data) => {
   const isSelf = data.from === myUsername;
   appendChatMessage(data, isSelf);
@@ -85,8 +102,9 @@ socket.on('chat-message', (data) => {
 socket.on('video-action', ({ action, time }) => {
   isRemoteAction = true;
 
+  const tolerance = action === 'heartbeat' ? SYNC_TOLERANCE_HEARTBEAT : SYNC_TOLERANCE_ACTION;
   const diff = Math.abs(videoEl.currentTime - time);
-  if (diff > SYNC_TOLERANCE) videoEl.currentTime = time;
+  if (diff > tolerance) videoEl.currentTime = time;
 
   if (action === 'play') {
     videoEl.play().catch(() => {
@@ -192,6 +210,13 @@ function appendSystemMessage(text) {
   div.textContent = text;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendHistoryDivider() {
+  const div = document.createElement('div');
+  div.className = 'history-divider';
+  div.textContent = '以上是历史消息';
+  chatMessages.appendChild(div);
 }
 
 // ==================== 弹幕 ====================

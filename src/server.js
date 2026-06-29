@@ -10,7 +10,7 @@ config.validateConfig();
 const { router: authRouter, requireAuth, requireAuthPage } = require('./auth');
 const videoApiRouter = require('./videoApi');
 const { streamVideo } = require('./videoStream');
-const { handleChatImageUpload, serveChatImage } = require('./chatUpload');
+const { handleChatImageUpload, serveChatImage, cleanupOldChatImages } = require('./chatUpload');
 const { getOrCreateThumbnail, checkFfmpegAvailable } = require('./thumbnail');
 const { initSocket } = require('./socket');
 
@@ -58,6 +58,43 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'same-origin');
+
+  // Content-Security-Policy：纵深防御的最后一道——即使聊天的 Markdown 渲染本身
+  // 已经做了 XSS 转义/协议白名单，CSP 能在那层防护意外失效时兜底。
+  //
+  // 各项取舍说明：
+  // - script-src 'self'：不允许任何内联 <script> 或内联事件处理器（onclick= 之类）执行，
+  //   只允许加载同源的 .js 文件。这要求页面里不能有内联脚本——已经确认 public/ 下
+  //   所有 HTML 都没有内联 <script> 或内联事件属性了。
+  // - style-src 'self' 'unsafe-inline'：这里保留了 'unsafe-inline'，没有做到最严格。
+  //   原因：前端代码里大量用 element.style.xxx = '...' 直接设置样式（弹幕颜色/位置、
+  //   聊天面板拖拽宽度、输入框自动撑高等），而不同浏览器对"JS 直接操作 CSSOM 是否受
+  //   style-src 限制"的实现细节有过历史分歧，我没有真实浏览器环境能逐一验证所有目标
+  //   浏览器的行为，贸然去掉 unsafe-inline 有概率静默破坏这些功能（且不容易第一时间
+  //   发现），所以这里选择保守。CSS 注入本身的风险也明显小于脚本注入。
+  //   如果你有条件用真实浏览器测试，可以尝试去掉 unsafe-inline 验证上述功能是否受影响。
+  // - img-src 'self' https:：聊天支持 Markdown 图片语法 ![alt](url)，会加载任意 https
+  //   外部图片，所以不能锁死成 'self'。
+  // - connect-src 'self'：Socket.IO 的 WebSocket 连接是同源的。
+  // - media-src 'self'：视频流来自 /video-stream/:id，同源。
+  // - object-src 'none' / base-uri 'self'：没有用到 <object>/<embed>，禁掉降低攻击面；
+  //   防止被注入的 <base> 标签篡改页面内相对链接的解析。
+  // - frame-ancestors 'none'：CSP 标准里对应 X-Frame-Options 的现代写法，双重保险。
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' https:",
+      "connect-src 'self'",
+      "media-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'",
+    ].join('; ')
+  );
+
   next();
 });
 
@@ -131,4 +168,9 @@ server.listen(config.PORT, () => {
   console.log(`视频目录: ${config.VIDEO_DIR}`);
   console.log(`运行模式: ${config.NODE_ENV}`);
   checkFfmpegAvailable(); // 提前检测一次并打印日志，结果会被缓存，不阻塞服务启动
+
+  // 聊天图片清理：启动时先跑一次，之后每 24 小时跑一次。
+  // CHAT_IMAGE_RETENTION_DAYS 设为 0 时，cleanupOldChatImages 内部会直接跳过，不做任何删除。
+  cleanupOldChatImages();
+  setInterval(cleanupOldChatImages, 24 * 60 * 60 * 1000).unref();
 });

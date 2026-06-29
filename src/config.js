@@ -14,6 +14,14 @@ const USERS_FILE = path.join(__dirname, '..', 'config', 'users.json');
 // 直接用 npm start 跑、没有反向代理时，必须保持 false。
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 
+// 聊天图片保留天数：超过这个天数的上传图片会被定期清理脚本删除，避免磁盘无限增长。
+// 默认 30 天（比常见的"7天"建议更宽松一些，毕竟私人聊天的图片可能有纪念意义，
+// 不想删得太激进）。设为 0 表示关闭自动清理。
+const CHAT_IMAGE_RETENTION_DAYS = (() => {
+  const raw = parseInt(process.env.CHAT_IMAGE_RETENTION_DAYS, 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 30;
+})();
+
 // 聊天图片上传目录：故意放在项目自己的 data 目录下，而不是 VIDEO_DIR 内部，
 // 避免上传的图片被视频扫描逻辑误识别，也避免两类文件混在一起难以管理。
 const CHAT_UPLOAD_DIR = path.join(__dirname, '..', 'data', 'chat-uploads');
@@ -59,6 +67,7 @@ module.exports = {
   CHAT_UPLOAD_DIR,
   THUMBNAIL_DIR,
   TRUST_PROXY,
+  CHAT_IMAGE_RETENTION_DAYS,
   isProduction: NODE_ENV === 'production',
   validateConfig,
 };

@@ -2,10 +2,12 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { USERS_FILE } = require('./config');
 
-// 每次都从磁盘重新读取，方便管理员用 createUser 脚本改完用户文件后无需重启服务
-function loadUsers() {
+// 每次都从磁盘重新读取，方便管理员用 createUser 脚本改完用户文件后无需重启服务。
+// 用异步读取而不是 readFileSync，避免阻塞 Node 的事件循环
+// （登录本身低频，但异步读取没有任何额外成本，顺手做掉）。
+async function loadUsers() {
   try {
-    const raw = fs.readFileSync(USERS_FILE, 'utf-8');
+    const raw = await fs.promises.readFile(USERS_FILE, 'utf-8');
     return JSON.parse(raw);
   } catch (err) {
     console.error('读取用户文件失败:', err.message);
@@ -17,7 +19,7 @@ function loadUsers() {
 // 注意：无论用户名是否存在，都会执行一次 bcrypt.compare，
 // 防止通过响应时间差判断"用户名是否存在"（时序攻击的一种简单防护）。
 async function verifyCredentials(username, password) {
-  const users = loadUsers();
+  const users = await loadUsers();
   const hash = users[username];
 
   // 用一个固定的假哈希占位，保证耗时和真实校验基本一致
@@ -28,8 +30,8 @@ async function verifyCredentials(username, password) {
   return Boolean(hash) && isMatch;
 }
 
-function userExists(username) {
-  const users = loadUsers();
+async function userExists(username) {
+  const users = await loadUsers();
   return Boolean(users[username]);
 }
 
