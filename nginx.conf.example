@@ -1,9 +1,9 @@
 # nginx 反向代理示例配置
 #
 # 用法：
-#   1. 把这个文件内容放进 /etc/nginx/sites-available/video-watch-party（文件名随意）
+#   1. 把这个文件内容放进 /etc/nginx/sites-available/Private-Cinema（文件名随意）
 #   2. 把下面的 server_name 改成你自己的域名或 IP
-#   3. ln -s /etc/nginx/sites-available/video-watch-party /etc/nginx/sites-enabled/
+#   3. ln -s /etc/nginx/sites-available/Private-Cinema /etc/nginx/sites-enabled/
 #   4. nginx -t && systemctl reload nginx
 #   5. 在项目的 .env 里把 TRUST_PROXY 设为 true，重启 Node 服务
 #

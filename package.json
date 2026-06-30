@@ -1,6 +1,6 @@
 {
-  "name": "video-watch-party",
-  "version": "1.0.1",
+  "name": "Private-Cinema",
+  "version": "1.1.1",
   "description": "私人双人视频同步观看 + 在线聊天网站",
   "main": "src/server.js",
   "type": "commonjs",
