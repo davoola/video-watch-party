@@ -600,6 +600,78 @@ body.is-resizing-chat {
   object-fit: contain;
 }
 
+/* 段落（连续文本行之间用空行分隔时，每段独立一个 <p>） */
+.msg .bubble p.md-p {
+  margin: 4px 0;
+}
+.msg .bubble p.md-p:first-child {
+  margin-top: 0;
+}
+.msg .bubble p.md-p:last-child {
+  margin-bottom: 0;
+}
+
+/* 代码块（```lang ... ```） */
+.msg .bubble pre.md-code-block {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: #14161a;
+  border: 1px solid #2c3038;
+  border-radius: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.msg .bubble pre.md-code-block code {
+  background: none;
+  padding: 0;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: #d8dae0;
+}
+
+/* 数学公式：行内用淡紫色底色和代码区分开；块级单独一个框 */
+.msg .bubble code.math-inline {
+  background: rgba(151, 117, 250, 0.18);
+  color: #c9b8ff;
+  font-family: "Cambria Math", "STIX Two Math", serif;
+  font-style: italic;
+}
+.msg .bubble pre.math-block {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: rgba(151, 117, 250, 0.1);
+  border: 1px solid rgba(151, 117, 250, 0.35);
+  border-radius: 8px;
+  overflow-x: auto;
+  max-width: 100%;
+  text-align: center;
+}
+.msg .bubble pre.math-block code {
+  background: none;
+  padding: 0;
+  font-family: "Cambria Math", "STIX Two Math", serif;
+  font-style: italic;
+  font-size: 13px;
+  color: #c9b8ff;
+}
+
+/* 多级嵌套列表：子级列表整体缩进，和外层视觉上区分开 */
+.msg .bubble .md-list .md-list {
+  margin: 2px 0 2px 4px;
+}
+
+/* 多级嵌套引用：每多一层左边框颜色变浅一点，便于区分层级 */
+.msg .bubble .md-quote .md-quote {
+  margin: 2px 0;
+  border-left-color: #3d6bc4;
+  opacity: 0.95;
+}
+.msg .bubble .md-quote .md-quote .md-quote {
+  border-left-color: #2f548f;
+}
+
 .chat-input-area {
   display: flex;
   flex-direction: column;

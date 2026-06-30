@@ -1,16 +1,27 @@
-// 聊天消息的 Markdown 渲染器（含块级结构 + 行内格式）。
+// 聊天消息的 Markdown 渲染器（完整语法支持版）。
 //
-// 安全原则（务必先读这一段，再改下面的代码）：
+// ────────── 安全原则，改动前必读 ──────────
 // 1. 永远先对原始文本做 HTML 转义，再叠加我们自己生成、自己可控的标签。
 //    这样即使用户输入里包含 <script> 之类的内容，也只会被当成纯文本显示。
-// 2. 链接 [text](url) 和图片 ![alt](url) 必须校验 URL 协议头（只准 http/https，
-//    链接额外允许 mailto），拒绝 javascript: 等危险协议——否则点击/加载就可能执行任意脚本。
-// 3. <details>/<summary> 折叠面板不是"放行任意 HTML"，而是只精确识别这 4 个
-//    不带任何属性的标签字符串本身。任何变体（带 class、带 onclick、带空格等）
-//    都不会被识别，会保持转义后的纯文本显示——这是故意的，缩小攻击面。
-// 4. 已经生成好的安全 HTML（代码、链接、图片）用占位符暂存，避免被后续规则
-//    （尤其是自动识别裸 URL 的规则）重复处理，导致标签被破坏或被嵌套套娃。
+// 2. 链接/图片 URL 必须校验协议头（只准 http/https，链接额外允许 mailto），
+//    拒绝 javascript: 等危险协议。
+// 3. <details>/<summary> 只精确白名单这 4 个不带任何属性的标签字符串，
+//    任何变体（带 class、带 onclick 等）都不会被识别，保持转义后的纯文本。
+// 4. 已生成好的安全 HTML（代码块、行内代码、数学公式、链接、图片）全部用
+//    占位符暂存，避免被后续规则重复处理或互相干扰。
+// 5. 代码块和数学公式在所有其他规则之前处理，防止其内容被行内格式规则二次解析。
+//
+// ────────── 支持的语法 ──────────
+// 块级：代码块(```), 数学块($$), 标题(#~######), 引用(> 多级), 有序/无序/任务多级列表,
+//       表格(含列对齐), 分隔线(---/***), 折叠面板(<details>)
+// 行内：行内代码(`), 行内数学($), 粗体(**), 斜体(*), 删除线(~~), 图片(![]), 链接([]),
+//       自动链接(https://...)
 
+'use strict';
+
+// ─────────────────────────────────────────
+// 基础安全工具
+// ─────────────────────────────────────────
 function escapeHtml(str) {
   return str
     .replace(/&/g, '&amp;')
@@ -20,7 +31,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// 链接允许的协议：http/https/mailto。图片不允许 mailto（没有意义）。
 function isSafeLinkUrl(url) {
   return /^(https?:|mailto:)/i.test(url);
 }
@@ -37,37 +47,47 @@ function unescapeDetailsTags(text) {
     .replace(/&lt;\/details&gt;/gi, '</details>');
 }
 
-// ---- 行内级格式：代码、图片、链接、粗体、斜体、删除线、自动链接 ----
-// includeBlockLevelExtras=true 时才处理图片（块级渲染场景使用）；
-// 弹幕场景调用时传 false，避免飞行的弹幕里突然冒出一张图片把布局挤坏。
-function applyInline(line, includeImages) {
-  const placeholders = [];
+// ─────────────────────────────────────────
+// 占位符池：把已生成的安全 HTML 暂存，换成不会被后续规则误处理的唯一令牌
+// ─────────────────────────────────────────
+function createPlaceholderPool() {
+  const store = [];
   const save = (html) => {
-    const token = '\u0000' + placeholders.length + '\u0000';
-    placeholders.push(html);
+    const token = '\u0000' + store.length + '\u0000';
+    store.push(html);
     return token;
   };
+  const restore = (text) =>
+    text.replace(/\u0000(\d+)\u0000/g, (_, i) => store[Number(i)]);
+  return { save, restore };
+}
 
+// ─────────────────────────────────────────
+// 行内格式渲染（对单行/行片段运行）
+// ─────────────────────────────────────────
+function applyInline(line, pool, includeImages) {
+  const { save } = pool;
   let text = line;
 
-  // 行内代码 `code`：最先处理并占位保护，避免内容被后面的粗体/斜体/链接规则误处理。
-  // 注意：这里的 code 此时已经是 escapeHtml() 处理过的转义文本了
-  // （applyInline 收到的 line 参数，调用方在更早的 renderMarkdown/renderInlineMarkdown 里
-  // 已经对整段原始输入做过一次 escapeHtml），所以直接拼进 <code>...</code> 是安全的，
-  // 不需要在这里再转义一次——这行注释就是为了避免日后有人看不出这一点，误加或误删转义逻辑。
+  // 行内代码 `code`（已经是 escapeHtml 过的文本，直接拼接安全）
   text = text.replace(/`([^`\n]+)`/g, (_, code) => save('<code>' + code + '</code>'));
 
-  // 图片 ![alt](url) —— 必须在链接规则之前处理，否则会被链接规则提前吃掉语法结构
+  // 行内数学公式 $formula$（用 <code class="math-inline"> 展示，不引入外部库）
+  text = text.replace(/\$([^$\n]+)\$/g, (_, math) =>
+    save('<code class="math-inline">' + math + '</code>')
+  );
+
+  // 图片 ![alt](url) —— 必须在链接规则之前处理
   if (includeImages) {
     text = text.replace(/!\[([^\]\n]*)\]\(([^)\n]+)\)/g, (whole, alt, url) => {
-      if (!isSafeImageUrl(url)) return whole; // 协议不安全：保持原样的转义文本，不渲染成图片
+      if (!isSafeImageUrl(url)) return whole;
       return save('<img src="' + url + '" alt="' + alt + '" class="md-image" loading="lazy">');
     });
   }
 
   // 链接 [text](url)
   text = text.replace(/\[([^\]\n]+)\]\(([^)\n]+)\)/g, (whole, label, url) => {
-    if (!isSafeLinkUrl(url)) return whole; // 协议不安全：保持原样的转义文本，不渲染成链接
+    if (!isSafeLinkUrl(url)) return whole;
     return save('<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>');
   });
 
@@ -75,61 +95,43 @@ function applyInline(line, includeImages) {
   text = text.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   text = text.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
 
-  // 斜体 *text* / _text_（放在粗体之后处理，避免吞掉 ** 配对）
+  // 斜体 *text* / _text_（在粗体之后处理）
   text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
   text = text.replace(/_([^_\n]+)_/g, '<em>$1</em>');
 
   // 删除线 ~~text~~
   text = text.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
 
-  // 自动链接：识别裸 URL（没有用 [text](url) 包裹的）。
-  // 因为上面的链接/图片已经被替换成占位符（不再是文本里的真实字符），
-  // 这里不会重复处理、也不会把已生成的 <a>/<img> 标签内容误当成裸 URL 再包一层。
+  // 自动链接（裸 URL）：因为链接/图片已替换成占位符，这里不会二次处理
   text = text.replace(
     /(https?:\/\/[^\s<]+)/g,
     (url) => save('<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>')
   );
 
-  // 把占位符换回真正生成的 HTML
-  text = text.replace(/\u0000(\d+)\u0000/g, (_, i) => placeholders[Number(i)]);
-
   return text;
 }
 
-// ---- 块级辅助：判断/拆解每一行属于哪种结构 ----
+// ─────────────────────────────────────────
+// 表格辅助
+// ─────────────────────────────────────────
 
-function isHr(line) {
-  return /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.trim());
-}
-
-function matchHeading(line) {
-  const m = line.match(/^(#{1,6})\s+(.+)$/);
-  return m ? { level: m[1].length, content: m[2] } : null;
-}
-
-function matchBlockquote(line) {
-  // 注意：此时传入的 line 已经经过 escapeHtml 处理，原始的 ">" 字符已经变成了 "&gt;"，
-  // 所以这里要匹配转义后的形式，不能匹配字面的 ">"（那样永远不会命中）。
-  const m = line.match(/^&gt;\s?(.*)$/);
-  return m ? m[1] : null;
-}
-
-function matchListItem(line) {
-  const m = line.match(/^(?:([-*])|(\d+)\.)\s+(.*)$/);
-  if (!m) return null;
-  const ordered = m[2] !== undefined;
-  const content = m[3];
-  const task = content.match(/^\[( |x|X)\]\s+(.*)$/);
-  if (task) {
-    return { ordered, task: true, checked: task[1].toLowerCase() === 'x', content: task[2] };
-  }
-  return { ordered, task: false, content };
-}
-
-function isTableSeparatorRow(line) {
-  const trimmed = line.trim();
-  if (!trimmed.includes('-')) return false;
-  return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(trimmed);
+/**
+ * 解析分隔行，返回每列的对齐方式数组（'left' | 'center' | 'right' | ''）
+ * 分隔行示例：| :--- | :---: | ---: |
+ */
+function parseAlignments(sepLine) {
+  let cells = sepLine.trim();
+  if (cells.startsWith('|')) cells = cells.slice(1);
+  if (cells.endsWith('|')) cells = cells.slice(0, -1);
+  return cells.split('|').map((cell) => {
+    const c = cell.trim();
+    const left = c.startsWith(':');
+    const right = c.endsWith(':');
+    if (left && right) return 'center';
+    if (right) return 'right';
+    if (left) return 'left';
+    return '';
+  });
 }
 
 function splitTableRow(line) {
@@ -139,52 +141,289 @@ function splitTableRow(line) {
   return cells.split('|').map((c) => c.trim());
 }
 
+function isTableSeparatorRow(line) {
+  const trimmed = line.trim();
+  if (!trimmed.includes('-')) return false;
+  return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(trimmed);
+}
+
 function isPlainTableRow(line) {
   return line.includes('|') && line.trim() !== '';
 }
 
-// 判断一行是否会被某种"块级结构"开头吃掉（用于决定普通文本行该在哪里截断）
+// ─────────────────────────────────────────
+// 引用块辅助（支持多级 >>）
+// 注意：此时文本已经 escapeHtml，> 已变成 &gt;
+// ─────────────────────────────────────────
+
+/**
+ * 返回这一行的引用前缀级别（0 表示不是引用）和去掉前缀后的内容
+ * 例如 "&gt;&gt; text" => { level: 2, content: "text" }
+ */
+function matchBlockquote(line) {
+  const m = line.match(/^((?:&gt;\s?)+)(.*)$/);
+  if (!m) return null;
+  // 数 &gt; 的个数
+  const level = (m[1].match(/&gt;/g) || []).length;
+  return { level, content: m[2] };
+}
+
+/**
+ * 把一组 { level, content } 行递归渲染成嵌套 blockquote
+ */
+function renderQuoteLines(lines, pool) {
+  if (lines.length === 0) return '';
+
+  // 第一级引用：提取当前层的内容行（level >= 1），把 level 减 1 得到子级
+  const inner = lines.map((l) => ({ level: l.level - 1, content: l.content }));
+
+  // 分出"需要继续嵌套的行"（原来 level >= 2）
+  const singleLevel = [];
+  let i = 0;
+  let result = '';
+
+  while (i < inner.length) {
+    if (inner[i].level === 0) {
+      // 普通行，直接行内渲染
+      singleLevel.push(applyInline(inner[i].content, pool, true));
+      i++;
+    } else {
+      // 有子级，先 flush 已积累的单行，再递归渲染子级块
+      if (singleLevel.length > 0) {
+        result += singleLevel.join('<br>');
+        singleLevel.length = 0;
+      }
+      // 收集连续的子级行
+      const subLines = [];
+      while (i < inner.length && inner[i].level > 0) {
+        subLines.push(inner[i]);
+        i++;
+      }
+      result += renderQuoteLines(subLines, pool);
+    }
+  }
+  if (singleLevel.length > 0) {
+    result += singleLevel.join('<br>');
+  }
+
+  return '<blockquote class="md-quote">' + result + '</blockquote>';
+}
+
+// ─────────────────────────────────────────
+// 列表辅助（支持多级嵌套，识别缩进）
+// ─────────────────────────────────────────
+
+/**
+ * 检测一行的缩进级别（每 2 个空格或 1 个 Tab 算一级）和列表类型
+ * 返回 null 表示不是列表行
+ */
+function matchListItemWithIndent(line) {
+  const m = line.match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);
+  if (!m) return null;
+  const indent = m[1];
+  // 以 2 个空格或 1 个 tab 为一级，向下取整
+  const level = indent.includes('\t')
+    ? indent.split('').filter((c) => c === '\t').length
+    : Math.floor(indent.length / 2);
+  const ordered = /^\d+\.$/.test(m[2]);
+  const rawContent = m[3];
+  const task = rawContent.match(/^\[( |x|X)\]\s+(.*)$/);
+  return {
+    level,
+    ordered,
+    task: !!task,
+    checked: task ? task[1].toLowerCase() === 'x' : false,
+    content: task ? task[2] : rawContent,
+  };
+}
+
+/**
+ * 把一组扁平的列表项（带 level 字段）递归渲染成嵌套 ul/ol
+ * @param {Array} items - [{ level, ordered, task, checked, content }, ...]
+ * @param {number} depth - 当前处理的深度
+ * @param {Object} pool  - 占位符池
+ */
+function renderListItems(items, depth, pool) {
+  if (items.length === 0) return '';
+
+  let html = '';
+  let i = 0;
+
+  while (i < items.length) {
+    const item = items[i];
+    if (item.level !== depth) { i++; continue; }
+
+    // 收集这个列表项的直接子项（level > depth 的连续行）
+    const children = [];
+    let j = i + 1;
+    while (j < items.length && items[j].level > depth) {
+      children.push(items[j]);
+      j++;
+    }
+
+    const contentHtml = applyInline(item.content, pool, true);
+    let liHtml = '';
+    if (item.task) {
+      liHtml = '<li class="md-task"><input type="checkbox" disabled' +
+        (item.checked ? ' checked' : '') + '> ' + contentHtml;
+    } else {
+      liHtml = '<li>' + contentHtml;
+    }
+
+    if (children.length > 0) {
+      liHtml += renderNestedList(children, depth + 1, pool);
+    }
+    liHtml += '</li>';
+    html += liHtml;
+    i = j;
+  }
+  return html;
+}
+
+/**
+ * 给一组子项确定用 ul 还是 ol 来包裹，再递归生成列表 HTML
+ */
+function renderNestedList(items, depth, pool) {
+  if (items.length === 0) return '';
+  // 以第一个 item 的 ordered 属性决定标签
+  const topItems = items.filter((it) => it.level === depth);
+  if (topItems.length === 0) return '';
+  const tag = topItems[0].ordered ? 'ol' : 'ul';
+  return '<' + tag + ' class="md-list">' + renderListItems(items, depth, pool) + '</' + tag + '>';
+}
+
+// ─────────────────────────────────────────
+// 代码块提取（预处理阶段，在 escapeHtml 之前）
+// ─────────────────────────────────────────
+
+/**
+ * 在对整段文本做 escapeHtml 之前，先把代码块和数学块提取出来，
+ * 换成占位符，避免其内容被转义规则或行内格式规则处理。
+ *
+ * 重要细节：生成的 HTML 内部如果包含真实的 "\n"，会在后续按行扫描
+ * （text.split('\n')）阶段被错误地当成"新的一行"处理，导致代码块/数学块
+ * 被切碎、插入意外的 <p> 标签。所以这里生成 HTML 时，把内部真实换行符
+ * 先换成一个不会和普通换行混淆的标记 "\u0002"，等整个块级扫描流程结束后
+ * （在 renderMarkdown 末尾）再统一换回真正的 "\n"，让浏览器在 <pre> 里正常折行。
+ *
+ * 返回 { processed: string, blocks: Map<token, html> }
+ */
+function extractBlocks(raw) {
+  const blocks = new Map();
+  let counter = 0;
+  let text = raw;
+
+  const NEWLINE_GUARD = '\u0002';
+
+  // 数学块 $$...$$（多行）
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+    const token = '\u0001block' + (counter++) + '\u0001';
+    const escaped = escapeHtml(math.trim()).replace(/\n/g, NEWLINE_GUARD);
+    blocks.set(token, '<pre class="math-block"><code>' + escaped + '</code></pre>');
+    return token;
+  });
+
+  // 代码块 ```lang\n...\n```
+  text = text.replace(/```([^\n]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const token = '\u0001block' + (counter++) + '\u0001';
+    const langAttr = lang.trim() ? ' class="language-' + escapeHtml(lang.trim()) + '"' : '';
+    // 去掉代码内容末尾紧贴着结束 ``` 之前的那一个换行符（书写惯例：```\ncode\n``` 中最后一个 \n 不属于代码本身）
+    const trimmedCode = code.replace(/\n$/, '');
+    const escaped = escapeHtml(trimmedCode).replace(/\n/g, NEWLINE_GUARD);
+    blocks.set(token, '<pre class="md-code-block"><code' + langAttr + '>' + escaped + '</code></pre>');
+    return token;
+  });
+
+  return { text, blocks };
+}
+
+// ─────────────────────────────────────────
+// 主块级渲染
+// ─────────────────────────────────────────
+
+/**
+ * 判断一行是否开始了一种新的块结构（用于截断普通文本段落的收集）
+ */
 function startsNewBlock(lines, i) {
   const line = lines[i];
-  if (isHr(line)) return true;
-  if (matchHeading(line)) return true;
-  if (matchBlockquote(line) !== null) return true;
-  if (matchListItem(line)) return true;
+  if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(line.trim())) return true;   // HR
+  if (/^#{1,6}\s/.test(line)) return true;                            // 标题
+  if (/^(?:&gt;\s?)+/.test(line)) return true;                        // 引用（已转义）
+  if (/^\s*([-*]|\d+\.)\s/.test(line)) return true;                   // 列表
   if (i + 1 < lines.length && isPlainTableRow(line) && isTableSeparatorRow(lines[i + 1])) return true;
   return false;
 }
 
-// ---- 主渲染函数：先按块分组，再对每块内部做行内处理 ----
+function isHr(line) {
+  return /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.trim());
+}
+
+// ─────────────────────────────────────────
+// 对外暴露的主渲染函数
+// ─────────────────────────────────────────
 function renderMarkdown(raw) {
   if (typeof raw !== 'string') return '';
 
-  // 防御性清理：占位符机制用 \u0000 作分隔符，提前清掉输入里可能混入的同字符，
-  // 避免极端情况下和内部占位符标记产生混淆（最坏情况只是渲染错位，不构成 XSS，但还是清掉更稳妥）。
-  let text = raw.replace(/\u0000/g, '');
-  text = escapeHtml(text);
+  // 防御性清理：占位符用 \u0000/\u0001/\u0002 作分隔符，提前清掉输入里可能混入的同字符
+  raw = raw.replace(/[\u0000\u0001\u0002]/g, '');
+
+  // ── 第一步：提取代码块和数学块（在 escapeHtml 之前），换成特殊占位符 ──
+  const { text: afterExtract, blocks } = extractBlocks(raw);
+
+  // ── 第二步：对剩余文本做 HTML 转义，再恢复折叠面板标签 ──
+  let text = escapeHtml(afterExtract);
   text = unescapeDetailsTags(text);
 
+  // ── 第三步：把块占位符恢复（它们的 HTML 已经在 extractBlocks 里生成好了） ──
+  // 先按行拆分，但代码块/数学块占位符可能跨行——先整体恢复再拆行
+  text = text.replace(/\u0001block\d+\u0001/g, (token) => {
+    // escapeHtml 会对 \u0001 进制包含的内容做转义，但 \u0001 本身不在转义字符集里，安全
+    return blocks.get(token) || token;
+  });
+
   const lines = text.split('\n');
+  const pool = createPlaceholderPool();
   const htmlParts = [];
   let i = 0;
 
   while (i < lines.length) {
     const line = lines[i];
 
-    // 表格：当前行像表头，下一行是分隔线（---|---），才认定为表格
+    // 已经处理好的代码块/数学块 HTML 直接输出（可能一行就是整个 <pre>...</pre>）
+    if (/<pre\s/.test(line) || line.startsWith('<pre>')) {
+      htmlParts.push(line);
+      i++;
+      continue;
+    }
+
+    // 表格
     if (i + 1 < lines.length && isPlainTableRow(line) && isTableSeparatorRow(lines[i + 1])) {
       const headerCells = splitTableRow(line);
+      const alignments = parseAlignments(lines[i + 1]);
       i += 2;
       const bodyRows = [];
       while (i < lines.length && isPlainTableRow(lines[i])) {
         bodyRows.push(splitTableRow(lines[i]));
         i++;
       }
-      const thead = '<tr>' + headerCells.map((c) => '<th>' + applyInline(c, true) + '</th>').join('') + '</tr>';
-      const tbody = bodyRows
-        .map((row) => '<tr>' + row.map((c) => '<td>' + applyInline(c, true) + '</td>').join('') + '</tr>')
-        .join('');
-      htmlParts.push('<div class="md-table-wrap"><table class="md-table"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table></div>');
+
+      const makeTh = (c, idx) => {
+        const align = alignments[idx];
+        const style = align ? ' style="text-align:' + align + '"' : '';
+        return '<th' + style + '>' + applyInline(c, pool, true) + '</th>';
+      };
+      const makeTd = (c, idx) => {
+        const align = alignments[idx];
+        const style = align ? ' style="text-align:' + align + '"' : '';
+        return '<td' + style + '>' + applyInline(c, pool, true) + '</td>';
+      };
+
+      const thead = '<tr>' + headerCells.map(makeTh).join('') + '</tr>';
+      const tbody = bodyRows.map((row) => '<tr>' + row.map(makeTd).join('') + '</tr>').join('');
+      htmlParts.push(
+        '<div class="md-table-wrap"><table class="md-table"><thead>' +
+        thead + '</thead><tbody>' + tbody + '</tbody></table></div>'
+      );
       continue;
     }
 
@@ -196,74 +435,82 @@ function renderMarkdown(raw) {
     }
 
     // 标题
-    const heading = matchHeading(line);
-    if (heading) {
-      const tag = 'h' + heading.level;
-      htmlParts.push('<' + tag + ' class="md-heading">' + applyInline(heading.content, true) + '</' + tag + '>');
+    const hMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (hMatch) {
+      const tag = 'h' + hMatch[1].length;
+      htmlParts.push('<' + tag + ' class="md-heading">' + applyInline(hMatch[2], pool, true) + '</' + tag + '>');
       i++;
       continue;
     }
 
-    // 引用块：连续的 > 行合并成一个 blockquote
+    // 多级引用块：连续的 &gt; 行一起收集后递归渲染
     if (matchBlockquote(line) !== null) {
-      const quoteLines = [];
+      const quoteItems = [];
       while (i < lines.length && matchBlockquote(lines[i]) !== null) {
-        quoteLines.push(applyInline(matchBlockquote(lines[i]), true));
+        quoteItems.push(matchBlockquote(lines[i]));
         i++;
       }
-      htmlParts.push('<blockquote class="md-quote">' + quoteLines.join('<br>') + '</blockquote>');
+      htmlParts.push(renderQuoteLines(quoteItems, pool));
       continue;
     }
 
-    // 列表（含任务列表）：连续的同类型（有序/无序）列表项合并成一个 ul/ol
-    const firstItem = matchListItem(line);
-    if (firstItem) {
-      const ordered = firstItem.ordered;
-      const items = [];
-      while (i < lines.length) {
-        const item = matchListItem(lines[i]);
-        if (!item || item.ordered !== ordered) break;
-        items.push(item);
+    // 多级嵌套列表（含任务列表）：收集所有缩进相关的连续行
+    if (matchListItemWithIndent(line) !== null) {
+      const listItems = [];
+      while (i < lines.length && matchListItemWithIndent(lines[i]) !== null) {
+        listItems.push(matchListItemWithIndent(lines[i]));
         i++;
       }
-      const tag = ordered ? 'ol' : 'ul';
-      const itemsHtml = items
-        .map((it) => {
-          if (it.task) {
-            const checkedAttr = it.checked ? ' checked' : '';
-            return '<li class="md-task"><input type="checkbox" disabled' + checkedAttr + '> ' + applyInline(it.content, true) + '</li>';
-          }
-          return '<li>' + applyInline(it.content, true) + '</li>';
-        })
-        .join('');
-      htmlParts.push('<' + tag + ' class="md-list">' + itemsHtml + '</' + tag + '>');
+      // 找出顶层（level === 最小 level）的有序/无序类型
+      const minLevel = Math.min(...listItems.map((it) => it.level));
+      const topOrdered = listItems.find((it) => it.level === minLevel).ordered;
+      const tag = topOrdered ? 'ol' : 'ul';
+      htmlParts.push(
+        '<' + tag + ' class="md-list">' + renderListItems(listItems, minLevel, pool) + '</' + tag + '>'
+      );
       continue;
     }
 
-    // 普通文本行：和后续的普通文本行合并，用 <br> 连接，直到遇到新的块结构起始行
+    // 普通文本段落
     const textLines = [];
     while (i < lines.length && !startsNewBlock(lines, i)) {
-      textLines.push(applyInline(lines[i], true));
+      // 空行产生段落分隔
+      if (lines[i].trim() === '') {
+        if (textLines.length > 0) {
+          htmlParts.push('<p class="md-p">' + textLines.join('<br>') + '</p>');
+          textLines.length = 0;
+        }
+        i++;
+        continue;
+      }
+      textLines.push(applyInline(lines[i], pool, true));
       i++;
     }
-    htmlParts.push(textLines.join('<br>'));
+    if (textLines.length > 0) {
+      htmlParts.push('<p class="md-p">' + textLines.join('<br>') + '</p>');
+    }
   }
 
-  return htmlParts.join('');
+  // \u0002 是 extractBlocks() 里用来临时保护代码块/数学块内部换行符的标记，
+  // 整个块级扫描流程结束、不再有"按行处理"的风险后，在这里统一换回真正的换行符。
+  return pool.restore(htmlParts.join('')).replace(/\u0002/g, '\n');
 }
 
-// 弹幕专用：只做行内格式（粗体/斜体/删除线/代码/链接/自动链接），
-// 不处理标题/列表/表格/引用/分隔线/图片/折叠面板这些块级或重量级结构——
-// 弹幕是一行飞过屏幕的文字，塞进表格或图片只会破坏布局，索性在这一层就不支持。
+// ─────────────────────────────────────────
+// 弹幕专用：只做行内格式，不做块级结构
+// ─────────────────────────────────────────
 function renderInlineMarkdown(raw) {
   if (typeof raw !== 'string') return '';
-  let text = raw.replace(/\u0000/g, '');
-  text = escapeHtml(text);
-  // 折叠面板对飞行文字没有意义，也不在这里识别 <details>/<summary>
-  return applyInline(text.replace(/\n/g, ' '), false);
+  raw = raw.replace(/[\u0000\u0001\u0002]/g, '');
+  const pool = createPlaceholderPool();
+  let text = escapeHtml(raw.replace(/\n/g, ' '));
+  text = applyInline(text, pool, false);
+  return pool.restore(text);
 }
 
-// Node (CommonJS, 用于测试) 和浏览器 (全局变量, 没有打包工具) 两种环境都能用
+// ─────────────────────────────────────────
+// 导出（兼容 Node CommonJS 和浏览器全局变量两种环境）
+// ─────────────────────────────────────────
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { escapeHtml, renderMarkdown, renderInlineMarkdown };
 }
