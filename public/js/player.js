@@ -173,16 +173,43 @@ chatInput.addEventListener('keydown', (e) => {
   }
 });
 
+
+// 生成头像元素：有头像 URL 就显示图片，否则显示名字首字符圆圈
+function makeAvatar(name, avatarUrl) {
+  if (avatarUrl) {
+    const img = document.createElement('img');
+    img.className = 'avatar';
+    img.src = avatarUrl;
+    img.alt = name;
+    img.addEventListener('error', () => img.replaceWith(makeAvatar(name, null)));
+    return img;
+  }
+  const el = document.createElement('div');
+  el.className = 'avatar-initial';
+  el.textContent = (name || '?').charAt(0).toUpperCase();
+  return el;
+}
+
 // ==================== 消息渲染 ====================
 function appendChatMessage(data, isSelf) {
   const div = document.createElement('div');
   div.className = 'msg' + (isSelf ? ' self' : '');
 
-  const who = document.createElement('div');
+  // 头像 + 用户名行
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+
+  const avatarEl = makeAvatar(data.from, data.avatar || null);
+  const who = document.createElement('span');
   who.className = 'who';
   who.textContent = data.from;
-  div.appendChild(who);
 
+  // 自己：名字在左、头像在右（由 CSS flex-direction:row-reverse 控制）
+  meta.appendChild(avatarEl);
+  meta.appendChild(who);
+  div.appendChild(meta);
+
+  // 消息气泡
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
 
@@ -195,7 +222,6 @@ function appendChatMessage(data, isSelf) {
     img.addEventListener('click', () => window.open(data.imageUrl, '_blank'));
     bubble.appendChild(img);
   } else {
-    // renderMarkdown 内部已做 HTML 转义 + 仅生成受控标签，可安全设置 innerHTML
     bubble.innerHTML = renderMarkdown(data.text);
   }
 
@@ -297,6 +323,7 @@ function buildEmojiPicker() {
       chatInput.value += emoji;
       chatInput.focus();
       autoResizeTextarea();
+	  emojiPicker.hidden = true;
     });
     emojiPicker.appendChild(btn);
   });
@@ -452,6 +479,12 @@ window.addEventListener('resize', () => {
   if (mobileLayoutQuery.matches) return;
   const current = parseFloat(chatPanel.style.width);
   if (Number.isFinite(current)) setChatWidth(current);
+});
+
+document.addEventListener('click', (e) => {
+  if (!emojiPicker.hidden && !emojiBtn.contains(e.target) && !emojiPicker.contains(e.target)) {
+    emojiPicker.hidden = true;
+  }
 });
 
 loadMe();

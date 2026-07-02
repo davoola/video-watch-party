@@ -436,21 +436,36 @@ body.is-resizing-chat {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 12px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;  
+  align-items: stretch;
 }
 
+/* ---- 聊天消息气泡（iMessage 风格） ---- */
 .msg {
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.55;
+  display: flex;           /* ← 让 .msg 成为 flex 列容器 */
+  flex-direction: column;
+  align-items: flex-start; /* 对方消息：内容靠左 */
+  width: 100%;             /* ← 撑满宽度，flex-end 才有位置可"推" */
+  box-sizing: border-box;
+}
+.msg.self {
+  align-items: flex-end;   /* 自己的消息：内容靠右 */
+}
+
+.msg.self > * {
+  margin-left: auto;
 }
 
 .msg .who {
-  font-size: 11px;
-  color: #6a7dab;
-  margin-bottom: 2px;
+  font-size: 12px;
+  color: #7a9dcc;
+  margin-bottom: 0;
+  letter-spacing: 0.2px;
 }
 
 .msg.system {
@@ -462,14 +477,14 @@ body.is-resizing-chat {
 .msg .bubble {
   display: inline-block;
   background: #262932;
-  padding: 6px 10px;
-  border-radius: 8px;
-  max-width: 100%;
+  padding: 9px 14px;               
+  border-radius: 4px 16px 16px 16px; 
+  max-width: 90%;                  
   word-break: break-word;
 }
-
 .msg.self .bubble {
   background: #3a5da0;
+  border-radius: 16px 4px 16px 16px; 
 }
 
 .msg .bubble code {
@@ -761,6 +776,11 @@ body.is-resizing-chat {
   flex-shrink: 0;
 }
 
+/* 在它正后面追加，强制覆盖 display:grid */
+.emoji-picker[hidden] {
+  display: none !important;
+}
+
 .emoji-picker button {
   background: transparent;
   font-size: 20px;
@@ -803,6 +823,13 @@ body.is-resizing-chat {
    确保竖屏手机和大多数手机横屏都会进入"移动布局"。
    ========================================================= */
 @media (max-width: 860px) {
+  .chat-messages {
+    padding: 12px 14px;
+    gap: 16px;
+  }
+  .msg .bubble {
+    max-width: 88%;
+  }
   .topbar {
     padding: 10px 14px;
     flex-wrap: wrap;
@@ -930,4 +957,169 @@ body.is-resizing-chat {
   .emoji-picker {
     grid-template-columns: repeat(6, 1fr);
   }
+}
+
+/* ---- 面包屑导航 ---- */
+.breadcrumb {
+  max-width: 1200px;
+  margin: 14px auto 0;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 13px;
+  color: #9a9da5;
+  min-height: 28px;
+}
+
+.crumb-btn {
+  background: transparent;
+  border: none;
+  color: #5a8dee;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.crumb-btn:hover {
+  background: #262932;
+  color: #fff;
+}
+
+.crumb-sep {
+  color: #4a4d55;
+  padding: 0 2px;
+  user-select: none;
+}
+
+.crumb-current {
+  color: #e8e8e8;
+  font-weight: 500;
+  padding: 2px 4px;
+}
+
+/* ---- 文件夹卡片 ---- */
+.folder-card {
+  border-style: dashed;
+}
+
+.folder-card:hover {
+  border-color: #e8a63a;
+}
+
+.folder-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1c22;
+}
+
+.folder-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+
+@media (max-width: 860px) {
+  .breadcrumb {
+    padding: 0 14px;
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .crumb-btn {
+    font-size: 12px;
+  }
+}
+
+
+/* ---- 历史消息分隔线 ---- */
+.history-divider {
+  text-align: center;
+  font-size: 11px;
+  color: #5a5d65;
+  padding: 4px 0 8px;
+  position: relative;
+}
+.history-divider::before,
+.history-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 28%;
+  height: 1px;
+  background: #2c3038;
+}
+.history-divider::before { left: 0; }
+.history-divider::after  { right: 0; }
+
+/* ---- 独立聊天页容器 ---- */
+.chat-standalone {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 57px);
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+  background: #1a1c22;
+}
+
+/* 独立聊天页消息区可以更宽，气泡最多占 85% */
+.chat-standalone .msg .bubble {
+  max-width: 85%;
+}
+
+@media (max-width: 860px) {
+  .chat-standalone { max-width: 100%; }
+  .msg .bubble, .msg.self .bubble { max-width: 88%; }
+}
+
+a.btn-ghost {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+
+/* ---- 聊天头像 ---- */
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;               /* 头像和名字之间 */
+  margin-bottom: 6px;     /* 名字行和气泡之间 */
+}
+.msg.self .msg-meta {
+  flex-direction: row-reverse;
+}
+.avatar {
+  width: 34px;            /* 稍微大一点 */
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #2c3038;
+  border: 1px solid #3a3d45;  /* 细描边，和背景分离 */
+}
+.avatar-initial {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a5da0, #2a4080); /* 渐变更好看 */
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #4a6db0;
+  user-select: none;
+}
+
+.custom-line {
+  width: 90px;                 /* 限制横线的宽度 */
+  height: 1.55px;                 /* 控制横线的粗细 */
+  background: linear-gradient(to right, #ff7e5f, #feb47b); /* 渐变色横线 */
+  margin: 10px auto;              /* 让这条短横线在页面居中 */
+  border-radius: 2px;          /* 让线条两端带有一点圆角 */
 }

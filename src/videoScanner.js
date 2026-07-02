@@ -117,4 +117,55 @@ function resolveVideoPath(id) {
   return fullPath;
 }
 
-module.exports = { scanVideos, resolveVideoPath, encodeId, decodeId, ALLOWED_EXT, invalidateVideoCache };
+// 返回指定相对目录下的直接子目录和视频文件（不递归）
+// relDir: 相对于 VIDEO_DIR 的路径，'' 表示根目录
+function scanDirContents(relDir) {
+  const targetDir = relDir ? path.join(VIDEO_DIR, relDir) : VIDEO_DIR;
+
+  // 安全校验：防止路径穿越攻击（如 dir=../../etc）
+  const normalizedRoot = path.resolve(VIDEO_DIR);
+  const normalizedTarget = path.resolve(targetDir);
+  const isRoot = normalizedTarget === normalizedRoot;
+  const isInside = normalizedTarget.startsWith(normalizedRoot + path.sep);
+  if (!isRoot && !isInside) return null;
+
+  let entries;
+  try {
+    entries = fs.readdirSync(targetDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const dirs = [];
+  const videos = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const fullPath = path.join(targetDir, entry.name);
+    const entryRel = relDir ? relDir + '/' + entry.name : entry.name;
+
+    if (entry.isDirectory()) {
+      dirs.push({ name: entry.name, relPath: entryRel });
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (ALLOWED_EXT.has(ext)) {
+        let size = 0;
+        try { size = fs.statSync(fullPath).size; } catch {}
+        videos.push({
+          id: encodeId(entryRel),
+          name: entry.name,
+          sizeBytes: size,
+          thumbnailUrl: `/video-thumbnail/${encodeId(entryRel)}`,
+        });
+      }
+    }
+  }
+
+  dirs.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  videos.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  return { dirs, videos };
+}
+
+//module.exports = { scanVideos, resolveVideoPath, encodeId, decodeId, ALLOWED_EXT, invalidateVideoCache };
+
+module.exports = { scanVideos, scanDirContents, resolveVideoPath, encodeId, decodeId, ALLOWED_EXT, invalidateVideoCache };

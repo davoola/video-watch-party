@@ -1,5 +1,5 @@
 const express = require('express');
-const { verifyCredentials } = require('./users');
+const { verifyCredentials, getUserData } = require('./users');
 
 const router = express.Router();
 
@@ -99,12 +99,16 @@ router.post('/api/login', async (req, res) => {
     clearFailures(req, username);
 
     // 防止 Session Fixation：登录成功后重新生成 session id
+    
+    clearFailures(req, username);
+    const userData = await getUserData(username);
     req.session.regenerate((err) => {
       if (err) {
         console.error('Session regenerate error:', err);
         return res.status(500).json({ error: '服务器错误，请稍后重试' });
       }
       req.session.user = username;
+      req.session.avatar = userData?.avatar || null;  // ← 新增
       res.json({ ok: true, username });
     });
   } catch (err) {
@@ -120,7 +124,7 @@ router.post('/api/logout', (req, res) => {
 });
 
 router.get('/api/me', requireAuth, (req, res) => {
-  res.json({ username: req.session.user });
+  res.json({ username: req.session.user, avatar: req.session.avatar || null });
 });
 
 module.exports = { router, requireAuth, requireAuthPage };

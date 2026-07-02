@@ -2,32 +2,39 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { USERS_FILE } = require('./config');
 
-// 每次都从磁盘重新读取，方便管理员用 createUser 脚本改完用户文件后无需重启服务。
-// 用异步读取而不是 readFileSync，避免阻塞 Node 的事件循环
-// （登录本身低频，但异步读取没有任何额外成本，顺手做掉）。
+// 内部格式统一为 { hash, avatar }，同时兼容旧的纯哈希字符串格式
 async function loadUsers() {
   try {
     const raw = await fs.promises.readFile(USERS_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    const normalized = {};
+    for (const [username, value] of Object.entries(data)) {
+      if (typeof value === 'string') {
+        normalized[username] = { hash: value, avatar: null };
+      } else if (value && typeof value === 'object') {
+        normalized[username] = { hash: value.hash || '', avatar: value.avatar || null };
+      }
+    }
+    return normalized;
   } catch (err) {
     console.error('读取用户文件失败:', err.message);
     return {};
   }
 }
 
-// 校验用户名密码，返回 true/false。
-// 注意：无论用户名是否存在，都会执行一次 bcrypt.compare，
-// 防止通过响应时间差判断"用户名是否存在"（时序攻击的一种简单防护）。
 async function verifyCredentials(username, password) {
   const users = await loadUsers();
-  const hash = users[username];
+  const userObj = users[username];
+  const hash = userObj ? userObj.hash : null;
 
-  // 用一个固定的假哈希占位，保证耗时和真实校验基本一致
   const DUMMY_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8b7XJP9wcOMo.M3KKDp6IsQHN0sQzS';
-  const targetHash = hash || DUMMY_HASH;
-
-  const isMatch = await bcrypt.compare(password, targetHash);
+  const isMatch = await bcrypt.compare(password, hash || DUMMY_HASH);
   return Boolean(hash) && isMatch;
+}
+
+async function getUserData(username) {
+  const users = await loadUsers();
+  return users[username] || null;
 }
 
 async function userExists(username) {
@@ -35,4 +42,4 @@ async function userExists(username) {
   return Boolean(users[username]);
 }
 
-module.exports = { loadUsers, verifyCredentials, userExists };
+module.exports = { loadUsers, verifyCredentials, getUserData, userExists };

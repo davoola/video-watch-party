@@ -89,7 +89,9 @@ function initSocket(io) {
   }
 
   io.on('connection', (socket) => {
-    const username = socket.user; // 由 server.js 里的 io.use() 鉴权中间件注入
+    //const username = socket.user; // 由 server.js 里的 io.use() 鉴权中间件注入
+	const username = socket.request.session.user;
+	const avatar = socket.request.session.avatar || null;   // ← 新增
 
     socket.join(LOBBY_ROOM);
 
@@ -171,6 +173,7 @@ function initSocket(io) {
 
         const msg = {
           from: username,
+		  avatar, 
           type: 'image',
           imageUrl: `/chat-image/${filename}`,
           ts: Date.now(),
@@ -189,6 +192,7 @@ function initSocket(io) {
 
       const msg = {
         from: username,
+		avatar, 
         type: 'text',
         text: trimmed,
         ts: Date.now(),
