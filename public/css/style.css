@@ -1,7 +1,15 @@
+/* =========================================================
+   全局 / 公共样式
+   说明：这一段放的是「所有页面」或者「已登录后的多个页面」都会
+   用到的基础样式（CSS reset、全局字体/背景色、公共顶部导航栏等）。
+   ========================================================= */
+
+/* 全局 CSS reset：统一所有元素的盒模型为 border-box，避免 padding/border 撑大元素宽高 */
 * {
   box-sizing: border-box;
 }
 
+/* 页面级基础样式：统一字体、深色背景与文字颜色，四个页面（登录/列表/聊天/播放）都基于这个底色 */
 body {
   margin: 0;
   font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -9,12 +17,85 @@ body {
   color: #e8e8e8;
 }
 
+/* 所有 <button> 的基础重置：去掉默认边框/圆角，统一光标和字重，具体配色由各自的类名（如 .btn-primary/.btn-ghost）决定 */
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ---- 公共顶部导航栏 topbar ----
+   index.html（视频列表页）、chat.html（独立聊天室）、player.html（播放页）
+   三个已登录页面共用同一套顶部导航栏样式；login.html 登录页没有顶部导航栏，不使用这里的样式。 */
+
+/* 顶部导航栏容器：左右两端对齐（左边站点品牌，右边用户信息/操作按钮） */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: #1a1c22;
+  border-bottom: 1px solid #2c3038;
+}
+
+/* 顶部导航栏左侧的站点品牌（logo + 名称）容器 */
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* 顶部导航栏里的站点 logo 图片 */
+.topbar .brand-logo {
+  height: 24px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* 顶部导航栏右侧的用户信息区域（当前用户名、退出登录等按钮的容器） */
+.topbar .user-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #9a9da5;
+}
+
+/* 响应式：窄屏下顶部导航栏允许换行、缩小字号，避免挤压变形（index/chat/player 共用） */
+@media (max-width: 860px) {
+  .topbar {
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .topbar .brand {
+    font-size: 15px;
+  }
+
+  .topbar .user-area {
+    font-size: 12px;
+    gap: 8px;
+  }
+}
+
+
+/* =========================================================
+   登录页开始 (login.html)
+   ========================================================= */
+
+/* 登录页整体容器：撑满一屏高度，内容纵向排列 */
 .login-page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
+/* 让登录卡片在屏幕中间垂直水平居中显示的包裹层 */
 .center-screen {
   flex: 1;
   min-height: 0;
@@ -24,6 +105,7 @@ body {
   padding: 24px 16px;
 }
 
+/* 登录表单的卡片容器：深色背景 + 圆角边框 */
 .card {
   background: #1f2229;
   border: 1px solid #2c3038;
@@ -32,6 +114,7 @@ body {
   width: min(320px, 90vw);
 }
 
+/* 卡片顶部「品牌区」：logo 图片 + 标题竖直居中排列 */
 .brand-lockup {
   display: flex;
   flex-direction: column;
@@ -40,6 +123,7 @@ body {
   margin-bottom: 20px;
 }
 
+/* 登录页专用的大号 logo 图片（比顶部导航栏里的 logo 更大） */
 .brand-logo-large {
   height: 48px;
   width: auto;
@@ -47,12 +131,14 @@ body {
   object-fit: contain;
 }
 
+/* 登录卡片标题（如“私密影院”） */
 .card h1 {
   font-size: 20px;
   margin: 0;
   text-align: center;
 }
 
+/* 登录页底部的版权/落款文字 */
 .copyright {
   text-align: center;
   font-size: 12px;
@@ -60,10 +146,21 @@ body {
   padding: 16px 0 20px;
 }
 
+/* 装饰用的短横线（登录卡片里用来分隔品牌区和其它内容的小渐变线） */
+.custom-line {
+  width: 100px;                 /* 限制横线的宽度 */
+  height: 1.55px;                 /* 控制横线的粗细 */
+  background: linear-gradient(to right, #ff7e5f, #feb47b); /* 渐变色横线 */
+  margin: 10px auto;              /* 让这条短横线在页面居中 */
+  border-radius: 2px;          /* 让线条两端带有一点圆角 */
+}
+
+/* 表单里每一组「label + input」的外层间距容器 */
 .field {
   margin-bottom: 16px;
 }
 
+/* 表单字段的说明文字（用户名/密码） */
 .field label {
   display: block;
   font-size: 13px;
@@ -71,6 +168,7 @@ body {
   margin-bottom: 6px;
 }
 
+/* 用户名/密码输入框样式 */
 .field input {
   width: 100%;
   padding: 10px 12px;
@@ -81,19 +179,13 @@ body {
   font-size: 16px;
 }
 
+/* 输入框聚焦时高亮边框颜色 */
 .field input:focus {
   outline: none;
   border-color: #5a8dee;
 }
 
-button {
-  cursor: pointer;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
+/* 登录页的主操作按钮（“登录”按钮），撑满一整行 */
 .btn-primary {
   width: 100%;
   padding: 11px;
@@ -102,10 +194,12 @@ button {
   margin-top: 4px;
 }
 
+/* 登录按钮悬浮态：颜色加深一点 */
 .btn-primary:hover {
   background: #4a7adf;
 }
 
+/* 登录失败时显示的错误提示文字 */
 .error-msg {
   color: #f06262;
   font-size: 13px;
@@ -114,38 +208,17 @@ button {
   min-height: 18px;
 }
 
-/* ---- 顶部导航 ---- */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px;
-  background: #1a1c22;
-  border-bottom: 1px solid #2c3038;
-}
+/* =========================================================
+   登录页结束 (login.html)
+   ========================================================= */
 
-.topbar .brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 500;
-}
 
-.topbar .brand-logo {
-  height: 24px;
-  width: auto;
-  object-fit: contain;
-}
+/* =========================================================
+   视频列表页开始 (index.html)
+   ========================================================= */
 
-.topbar .user-area {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  color: #9a9da5;
-}
-
+/* 顶部导航栏里的“幽灵按钮”（浅色描边、无填充背景），例如“加入聊天”“退出登录”按钮；
+   仅 index.html 使用 —— chat.html/player.html 的返回链接用的是下面的 .back-link */
 .btn-ghost {
   background: transparent;
   border: 1px solid #353a44;
@@ -154,18 +227,29 @@ button {
   border-radius: 8px;
 }
 
+/* 幽灵按钮悬浮态 */
 .btn-ghost:hover {
   border-color: #5a8dee;
   color: #fff;
 }
 
-/* ---- 大厅在线状态横幅（视频列表页） ---- */
+/* “加入聊天”实际上是个 <a> 标签而不是 <button>，这里补上链接元素需要的样式（去下划线、内容垂直居中） */
+a.btn-ghost {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- 大厅在线状态横幅（视频列表页顶部，用来提示“对方正在看什么/是否在线”） ---- */
+
+/* 在线状态横幅外层容器：控制最大宽度和左右留白，和下面的视频网格对齐 */
 #presenceBanner {
   max-width: 1200px;
   margin: 16px auto 0;
   padding: 0 24px;
 }
 
+/* 在线状态卡片本体 */
 .presence-card {
   display: flex;
   align-items: center;
@@ -179,6 +263,7 @@ button {
   flex-wrap: wrap;
 }
 
+/* 在线状态卡片左侧的小圆点指示灯 */
 .presence-card .dot {
   display: inline-block;
   width: 8px;
@@ -187,10 +272,12 @@ button {
   margin-right: 6px;
 }
 
+/* 三种状态对应的指示灯颜色：在线 / 空闲（浏览列表）/ 离线 */
 .dot.online { background: #4caf6e; }
 .dot.idle { background: #d8a93a; }
 .dot.offline { background: #5a5d65; }
 
+/* 在线状态卡片右侧的“加入TA观看/加入聊天”按钮 */
 .presence-card .join-btn {
   background: #5a8dee;
   color: #fff;
@@ -199,7 +286,21 @@ button {
   font-size: 12px;
 }
 
-/* ---- 视频列表 ---- */
+/* 响应式：窄屏下在线状态横幅的左右留白收窄，字体/内边距也相应缩小 */
+@media (max-width: 860px) {
+  #presenceBanner {
+    padding: 0 14px;
+  }
+
+  .presence-card {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+}
+
+/* ---- 视频列表（含文件夹）---- */
+
+/* 视频/文件夹卡片的网格布局容器：自动按最小宽度换行排列 */
 .video-grid {
   padding: 24px;
   display: grid;
@@ -209,6 +310,7 @@ button {
   margin: 0 auto;
 }
 
+/* 单个视频/文件夹卡片：悬浮时高亮边框，提示可点击 */
 .video-card {
   background: #1f2229;
   border: 1px solid #2c3038;
@@ -222,6 +324,7 @@ button {
   border-color: #5a8dee;
 }
 
+/* 视频卡片的缩略图容器（未加载出真实缩略图前，先显示占位背景色） */
 .video-card .thumb {
   position: relative;
   height: 124px;
@@ -236,6 +339,7 @@ button {
   overflow: hidden;
 }
 
+/* 真实缩略图 <img>：默认透明，加载成功后再淡入显示 */
 .video-card .thumb-img {
   position: absolute;
   inset: 0;
@@ -245,6 +349,7 @@ button {
   opacity: 0; /* 默认隐藏，加载成功后才显示，避免破图标先闪一下 */
 }
 
+/* 缩略图加载完成后的状态：让上面的 .thumb-img 显示出来 */
 .video-card .thumb.thumb-loaded .thumb-img {
   opacity: 1;
 }
@@ -255,6 +360,7 @@ button {
   z-index: 1;
 }
 
+/* 缩略图加载成功后，占位图标就不需要了，隐藏掉 */
 .video-card .thumb.thumb-loaded .thumb-fallback {
   display: none;
 }
@@ -277,161 +383,194 @@ button {
   font-size: 22px;
 }
 
+/* 只有缩略图加载成功时才显示这个播放按钮叠层 */
 .video-card .thumb.thumb-loaded .thumb-play-overlay {
   display: flex;
 }
 
+/* 视频/文件夹的名称文字 */
 .video-card .name {
   font-size: 14px;
   word-break: break-all;
   margin-bottom: 4px;
 }
 
+/* 视频卡片的次要信息文字（比如文件大小/时长等元信息） */
 .video-card .meta {
   font-size: 12px;
   color: #8a8d95;
 }
 
+/* 当前目录下没有视频/文件夹时的空状态提示 */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
   color: #8a8d95;
 }
 
-/* ---- 播放页 ---- */
-.player-layout {
-  display: flex;
-  height: calc(100vh - 57px);
+/* 响应式：窄屏下视频网格改为更小的卡片、更紧凑的间距 */
+@media (max-width: 860px) {
+  .video-grid {
+    padding: 14px;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .video-card {
+    padding: 10px;
+  }
+
+  .video-card .thumb {
+    height: 80px;
+    font-size: 22px;
+  }
+
+  .video-card .name {
+    font-size: 13px;
+  }
 }
 
-.player-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: #000;
-  min-width: 0;
+/* 更窄的屏幕（常见手机竖屏）进一步压缩视频网格间距 */
+@media (max-width: 420px) {
+  .video-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
 }
 
-.video-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  background: #000;
-  overflow: hidden;
-}
+/* ---- 面包屑导航（文件夹浏览时显示当前路径）---- */
 
-.video-wrap video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-  display: block;
-}
-
-/* 弹幕层：盖在视频上方，不能挡住底部播放控件的点击 */
-.danmaku-overlay {
-  position: absolute;
-  inset: 0;
-  bottom: 48px; /* 留出原生播放控件的高度，避免遮挡点击 */
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.danmaku-item {
-  position: absolute;
-  white-space: nowrap;
-  font-size: 20px; /* 从 16px 调大 */
-  font-weight: 600;
-  color: #fff; /* 兜底色，实际显示颜色由 JS 按条随机指定 */
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
-  will-change: transform;
-  animation-name: danmaku-fly;
-  animation-timing-function: linear;
-  animation-fill-mode: forwards;
-}
-
-.danmaku-item code {
-  background: rgba(255, 255, 255, 0.15);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
-
-@keyframes danmaku-fly {
-  from { transform: translateX(100vw); }
-  to { transform: translateX(-110%); }
-}
-
-.video-toolbar {
+/* 面包屑容器：和视频网格保持一致的最大宽度/左右留白 */
+.breadcrumb {
+  max-width: 1200px;
+  margin: 14px auto 0;
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 8px 14px;
-  background: #14161a;
-  border-top: 1px solid #2c3038;
-  flex-shrink: 0;
-}
-
-.danmaku-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #b0b3ba;
-  cursor: pointer;
-  user-select: none;
-}
-
-.danmaku-toggle input {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-/* ---- 聊天面板拖拽手柄（桌面端调整宽度用） ---- */
-.chat-resizer {
-  width: 6px;
-  flex-shrink: 0;
-  cursor: col-resize;
-  background: #2c3038; /* 默认就是一条分隔线，承担原来 chat-panel 的 border-left 视觉效果 */
-  position: relative;
-  z-index: 5;
-  touch-action: none; /* 防止触屏拖动时页面跟着滚动/缩放 */
-}
-
-.chat-resizer:hover,
-.chat-resizer.is-dragging {
-  background: #5a8dee;
-}
-
-/* 拖拽中：给整个页面禁用文本选中和设置统一光标，体验更顺滑，
-   不会出现"拖一拖突然选中了页面文字"的情况 */
-body.is-resizing-chat {
-  cursor: col-resize;
-  user-select: none;
-}
-
-.chat-panel {
-  width: 320px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: #1a1c22;
-  min-height: 0;
-}
-
-/* 移动端的"聊天折叠条"：桌面端默认隐藏 */
-.chat-toggle-bar {
-  display: none;
-}
-
-.chat-header {
-  padding: 14px 16px;
-  border-bottom: 1px solid #2c3038;
+  flex-wrap: wrap;
+  gap: 4px;
   font-size: 13px;
   color: #9a9da5;
-  flex-shrink: 0;
+  min-height: 28px;
 }
 
+/* 面包屑里可点击跳转的路径按钮（根目录/中间层级文件夹） */
+.crumb-btn {
+  background: transparent;
+  border: none;
+  color: #5a8dee;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.crumb-btn:hover {
+  background: #262932;
+  color: #fff;
+}
+
+/* 面包屑路径之间的分隔符（›） */
+.crumb-sep {
+  color: #4a4d55;
+  padding: 0 2px;
+  user-select: none;
+}
+
+/* 面包屑里当前所在的目录名（不可点击，仅展示） */
+.crumb-current {
+  color: #e8e8e8;
+  font-weight: 500;
+  padding: 2px 4px;
+}
+
+/* 响应式：窄屏下面包屑左右留白收窄、字号缩小 */
+@media (max-width: 860px) {
+  .breadcrumb {
+    padding: 0 14px;
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .crumb-btn {
+    font-size: 12px;
+  }
+}
+
+/* ---- 文件夹卡片（和视频卡片共用 .video-card 布局，这里只覆盖差异部分）---- */
+
+/* 文件夹卡片用虚线边框，和视频卡片的实线边框区分开 */
+.folder-card {
+  border-style: dashed;
+}
+
+/* 文件夹卡片悬浮态用橙色，和视频卡片的蓝色悬浮态区分开 */
+.folder-card:hover {
+  border-color: #e8a63a;
+}
+
+/* 文件夹卡片的缩略图区域：没有真实图片，纯色背景 */
+.folder-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1c22;
+}
+
+/* 文件夹图标（📁）*/
+.folder-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+
+/* =========================================================
+   视频列表页结束 (index.html)
+   ========================================================= */
+
+
+/* =========================================================
+   聊天公共组件开始
+   说明：这一段是 chat.html（独立聊天室整页）和 player.html
+   （播放页右侧/下方内嵌的聊天面板）两个页面共用的聊天内容样式——
+   消息气泡、Markdown 渲染、表情面板、输入区等都是两边共用同一套 DOM
+   结构和类名（由 chat.js / player.js / markdown.js 共同生成)。
+   player.html 特有的外层容器（可拖拽宽度、可折叠收起等）见后面的
+   “播放页”小节。
+   ========================================================= */
+
+/* 独立聊天页（chat.html）整体容器：限制最大宽度，让聊天区域居中，不像播放页那样占满全屏 */
+.chat-standalone {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 57px);
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+  background: #1a1c22;
+}
+
+/* 独立聊天页消息区可以更宽，气泡最多占 85%（player.html 播放页聊天面板更窄，气泡占比在下面单独定义） */
+.chat-standalone .msg .bubble {
+  max-width: 85%;
+}
+
+/* 响应式：窄屏下独立聊天页占满全宽 */
+@media (max-width: 860px) {
+  .chat-standalone { max-width: 100%; }
+  .msg .bubble, .msg.self .bubble { max-width: 88%; }
+}
+
+/* “返回”链接：chat.html 顶部“← 返回视频库”、player.html 顶部“← 返回视频列表”共用 */
+.back-link {
+  font-size: 13px;
+  color: #9a9da5;
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: #5a8dee;
+}
+
+/* 聊天消息列表容器：纵向排列、可滚动 */
 .chat-messages {
   flex: 1;
   min-height: 0;
@@ -443,7 +582,20 @@ body.is-resizing-chat {
   align-items: stretch;
 }
 
+/* 响应式：窄屏下消息列表内边距/间距收紧 */
+@media (max-width: 860px) {
+  .chat-messages {
+    padding: 12px 14px;
+    gap: 16px;
+  }
+  .msg .bubble {
+    max-width: 88%;
+  }
+}
+
 /* ---- 聊天消息气泡（iMessage 风格） ---- */
+
+/* 单条消息的外层容器：默认按“对方消息”靠左对齐排列 */
 .msg {
   font-size: 14px;
   line-height: 1.55;
@@ -453,14 +605,18 @@ body.is-resizing-chat {
   width: 100%;             /* ← 撑满宽度，flex-end 才有位置可"推" */
   box-sizing: border-box;
 }
+
+/* 自己发的消息：整体靠右对齐 */
 .msg.self {
   align-items: flex-end;   /* 自己的消息：内容靠右 */
 }
 
+/* 自己消息内的子元素（头像行、气泡）都跟着靠右 */
 .msg.self > * {
   margin-left: auto;
 }
 
+/* 消息发送者的用户名文字 */
 .msg .who {
   font-size: 12px;
   color: #7a9dcc;
@@ -468,12 +624,14 @@ body.is-resizing-chat {
   letter-spacing: 0.2px;
 }
 
+/* 系统消息（比如“XX 加入了聊天”）的样式：灰色斜体，弱化视觉权重 */
 .msg.system {
   color: #7a7d85;
   font-style: italic;
   font-size: 12px;
 }
 
+/* 消息气泡本体：对方消息默认深灰底色，左上角直角（像聊天软件里的“尖角”朝向发送者一侧） */
 .msg .bubble {
   display: inline-block;
   background: #262932;
@@ -482,11 +640,14 @@ body.is-resizing-chat {
   max-width: 90%;                  
   word-break: break-word;
 }
+
+/* 自己发的消息气泡：蓝色底色，右上角直角 */
 .msg.self .bubble {
   background: #3a5da0;
   border-radius: 16px 4px 16px 16px; 
 }
 
+/* 气泡内联行代码（单个反引号包裹的代码）样式 */
 .msg .bubble code {
   background: rgba(0, 0, 0, 0.25);
   padding: 1px 5px;
@@ -495,20 +656,24 @@ body.is-resizing-chat {
   font-size: 12px;
 }
 
+/* 气泡内的超链接颜色 */
 .msg .bubble a {
   color: #9ec1ff;
   text-decoration: underline;
 }
 
+/* 气泡内的删除线文字（~~text~~）透明度降低，表示“已划掉” */
 .msg .bubble del {
   opacity: 0.7;
 }
 
+/* 纯图片消息的气泡：去掉背景色和内边距，让图片本身撑满 */
 .msg .bubble.image-bubble {
   padding: 4px;
   background: transparent;
 }
 
+/* 用户上传发送的图片（区别于下面 Markdown 语法插入的行内图片） */
 .msg .bubble img.chat-image {
   display: block;
   max-width: 220px;
@@ -518,7 +683,7 @@ body.is-resizing-chat {
   object-fit: cover;
 }
 
-/* ---- Markdown 扩展语法样式（聊天气泡内） ---- */
+/* ---- Markdown 扩展语法样式（聊天气泡内，由 markdown.js 生成对应的 class） ---- */
 
 /* 标题：聊天气泡空间有限，明显缩小常规网页标题的视觉权重，只用字号/粗细区分层级 */
 .msg .bubble .md-heading {
@@ -533,7 +698,7 @@ body.is-resizing-chat {
 .msg .bubble h5.md-heading,
 .msg .bubble h6.md-heading { font-size: 14px; }
 
-/* 引用块 */
+/* 引用块（> 开头的文字） */
 .msg .bubble .md-quote {
   margin: 4px 0;
   padding: 2px 10px;
@@ -542,7 +707,7 @@ body.is-resizing-chat {
   opacity: 0.9;
 }
 
-/* 列表 */
+/* 有序/无序列表 */
 .msg .bubble .md-list {
   margin: 4px 0;
   padding-left: 20px;
@@ -562,7 +727,7 @@ body.is-resizing-chat {
   accent-color: #5a8dee;
 }
 
-/* 分隔线 */
+/* 分隔线（---） */
 .msg .bubble .md-hr {
   border: none;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
@@ -687,6 +852,69 @@ body.is-resizing-chat {
   border-left-color: #2f548f;
 }
 
+/* ---- 历史消息分隔线（用于区分“之前的聊天记录”和“新收到的消息”）---- */
+.history-divider {
+  text-align: center;
+  font-size: 11px;
+  color: #5a5d65;
+  padding: 4px 0 8px;
+  position: relative;
+}
+.history-divider::before,
+.history-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 28%;
+  height: 1px;
+  background: #2c3038;
+}
+.history-divider::before { left: 0; }
+.history-divider::after  { right: 0; }
+
+/* ---- 聊天头像 ---- */
+
+/* 头像+用户名这一行的容器 */
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;               /* 头像和名字之间 */
+  margin-bottom: 6px;     /* 名字行和气泡之间 */
+}
+/* 自己的消息：头像行也跟着整体靠右（头像在名字右边） */
+.msg.self .msg-meta {
+  flex-direction: row-reverse;
+}
+/* 用户头像图片（来自 config/users.json 里配置的 avatar 路径） */
+.avatar {
+  width: 34px;            /* 稍微大一点 */
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #2c3038;
+  border: 1px solid #3a3d45;  /* 细描边，和背景分离 */
+}
+/* 没有头像图片时的兜底样式：用用户名首字母 + 渐变底色代替 */
+.avatar-initial {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3a5da0, #2a4080); /* 渐变更好看 */
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #4a6db0;
+  user-select: none;
+}
+
+/* ---- 聊天输入区（表情/图片工具栏 + 文本框 + 发送按钮）---- */
+
+/* 输入区整体容器 */
 .chat-input-area {
   display: flex;
   flex-direction: column;
@@ -710,6 +938,7 @@ body.is-resizing-chat {
   gap: 8px;
 }
 
+/* 聊天文本输入框，支持随内容自动增高（由 JS 控制） */
 .chat-send-row textarea#chatInput {
   flex: 1;
   min-width: 0;
@@ -727,11 +956,13 @@ body.is-resizing-chat {
   overflow-y: auto;
 }
 
+/* 输入框聚焦态边框高亮 */
 .chat-send-row textarea#chatInput:focus {
   outline: none;
   border-color: #5a8dee;
 }
 
+/* 发送按钮 */
 .chat-send-row button#sendBtn {
   padding: 0 18px;
   height: 56px; /* 与输入框默认高度对齐，视觉上不会显得发送按钮"矮一截" */
@@ -740,7 +971,7 @@ body.is-resizing-chat {
   flex-shrink: 0;
 }
 
-/* 常驻的格式提示：不依赖 placeholder（会在输入文字后消失），始终可见 */
+/* 常驻的格式提示文字（提示支持 Markdown 语法等）：不依赖 placeholder（会在输入文字后消失），始终可见 */
 .chat-input-hint {
   font-size: 11px;
   color: #6a6d75;
@@ -750,6 +981,14 @@ body.is-resizing-chat {
   text-overflow: ellipsis;
 }
 
+/* 响应式：窄屏下格式提示文字隐藏，节省空间 */
+@media (max-width: 860px) {
+  .chat-input-hint {
+    display: none;
+  }
+}
+
+/* 工具栏里的图标按钮（表情 😀 / 图片 🖼 按钮）通用样式 */
 .icon-btn {
   background: transparent;
   border: 1px solid transparent;
@@ -765,6 +1004,8 @@ body.is-resizing-chat {
 }
 
 /* ---- 表情选择面板 ---- */
+
+/* 表情面板：网格排列所有表情 */
 .emoji-picker {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -776,11 +1017,12 @@ body.is-resizing-chat {
   flex-shrink: 0;
 }
 
-/* 在它正后面追加，强制覆盖 display:grid */
+/* 在它正后面追加，强制覆盖 display:grid：面板被 [hidden] 隐藏时彻底不显示 */
 .emoji-picker[hidden] {
   display: none !important;
 }
 
+/* 单个表情按钮 */
 .emoji-picker button {
   background: transparent;
   font-size: 20px;
@@ -793,7 +1035,177 @@ body.is-resizing-chat {
   background: #262932;
 }
 
-/* ---- 未读消息徽标（移动端折叠条上使用） ---- */
+/* 响应式：窄屏下表情面板列数减少，避免每个表情格子太挤 */
+@media (max-width: 420px) {
+  .chat-input-area {
+    padding: 8px;
+  }
+
+  .emoji-picker {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* =========================================================
+   聊天公共组件结束
+   ========================================================= */
+
+
+/* =========================================================
+   播放页开始 (player.html)
+   说明：这里是播放页专属的样式——视频播放区、弹幕、以及
+   “可拖拽宽度 / 可折叠收起”的侧边聊天面板外壳。
+   面板内部的消息气泡/输入区等内容样式请看上面的“聊天公共组件”。
+   ========================================================= */
+
+/* 播放页整体布局：左边视频，右边聊天面板，水平排列 */
+.player-layout {
+  display: flex;
+  height: calc(100vh - 57px);
+}
+
+/* 视频区域主容器：占据剩余空间，纵向排列（视频 + 底部工具栏） */
+.player-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  min-width: 0;
+}
+
+/* 视频播放器外层包裹容器，用来定位弹幕层 */
+.video-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #000;
+  overflow: hidden;
+}
+
+/* 原生 <video> 标签本体：等比例撑满容器 */
+.video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+
+/* 弹幕层：盖在视频上方，不能挡住底部播放控件的点击 */
+.danmaku-overlay {
+  position: absolute;
+  inset: 0;
+  bottom: 48px; /* 留出原生播放控件的高度，避免遮挡点击 */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* 单条弹幕文字：从右向左飞过屏幕 */
+.danmaku-item {
+  position: absolute;
+  white-space: nowrap;
+  font-size: 20px; /* 从 16px 调大 */
+  font-weight: 600;
+  color: #fff; /* 兜底色，实际显示颜色由 JS 按条随机指定 */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+  will-change: transform;
+  animation-name: danmaku-fly;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* 弹幕里出现行内代码时的样式 */
+.danmaku-item code {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* 弹幕飞行动画：从屏幕右侧飞到左侧屏幕外 */
+@keyframes danmaku-fly {
+  from { transform: translateX(100vw); }
+  to { transform: translateX(-110%); }
+}
+
+/* 视频下方的工具栏（目前放弹幕开关） */
+.video-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 14px;
+  background: #14161a;
+  border-top: 1px solid #2c3038;
+  flex-shrink: 0;
+}
+
+/* 弹幕开关（复选框 + 文字）容器 */
+.danmaku-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #b0b3ba;
+  cursor: pointer;
+  user-select: none;
+}
+
+.danmaku-toggle input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* ---- 聊天面板拖拽手柄（桌面端调整宽度用） ---- */
+.chat-resizer {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: #2c3038; /* 默认就是一条分隔线，承担原来 chat-panel 的 border-left 视觉效果 */
+  position: relative;
+  z-index: 5;
+  touch-action: none; /* 防止触屏拖动时页面跟着滚动/缩放 */
+}
+
+/* 拖拽手柄悬浮态 / 正在拖拽时高亮成蓝色 */
+.chat-resizer:hover,
+.chat-resizer.is-dragging {
+  background: #5a8dee;
+}
+
+/* 拖拽中：给整个页面禁用文本选中和设置统一光标，体验更顺滑，
+   不会出现"拖一拖突然选中了页面文字"的情况 */
+body.is-resizing-chat {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* 播放页右侧聊天面板外壳（宽度固定，可被拖拽手柄调整）；
+   注意这和 chat.html 的整页容器 .chat-standalone 是两回事——
+   面板内部复用的是上面“聊天公共组件”里的 .chat-messages/.msg 等样式 */
+.chat-panel {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1a1c22;
+  min-height: 0;
+}
+
+/* 移动端的"聊天折叠条"：桌面端默认隐藏，只在下面窄屏媒体查询里显示 */
+.chat-toggle-bar {
+  display: none;
+}
+
+/* 播放页聊天面板顶部的小标题栏（chat.html 独立聊天页没有这个，直接用顶部导航栏代替） */
+.chat-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #2c3038;
+  font-size: 13px;
+  color: #9a9da5;
+  flex-shrink: 0;
+}
+
+/* ---- 未读消息徽标（移动端聊天折叠条上使用）---- */
 .unread-badge {
   background: #e2554a;
   color: #fff;
@@ -807,73 +1219,8 @@ body.is-resizing-chat {
   padding: 0 5px;
 }
 
-.back-link {
-  font-size: 13px;
-  color: #9a9da5;
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: #5a8dee;
-}
-
-/* =========================================================
-   响应式 / 移动端适配
-   断点选择 860px：略大于常见手机横屏宽度，
-   确保竖屏手机和大多数手机横屏都会进入"移动布局"。
-   ========================================================= */
+/* 响应式：窄屏下播放页改为“视频在上、聊天在下”的堆叠布局，聊天面板变成可收起的抽屉 */
 @media (max-width: 860px) {
-  .chat-messages {
-    padding: 12px 14px;
-    gap: 16px;
-  }
-  .msg .bubble {
-    max-width: 88%;
-  }
-  .topbar {
-    padding: 10px 14px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .topbar .brand {
-    font-size: 15px;
-  }
-
-  .topbar .user-area {
-    font-size: 12px;
-    gap: 8px;
-  }
-
-  #presenceBanner {
-    padding: 0 14px;
-  }
-
-  .presence-card {
-    font-size: 12px;
-    padding: 10px 12px;
-  }
-
-  .video-grid {
-    padding: 14px;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  }
-
-  .video-card {
-    padding: 10px;
-  }
-
-  .video-card .thumb {
-    height: 80px;
-    font-size: 22px;
-  }
-
-  .video-card .name {
-    font-size: 13px;
-  }
-
-  /* ---- 播放页：视频与聊天上下堆叠，聊天面板变成可收起的抽屉 ---- */
   .player-layout {
     flex-direction: column;
     height: calc(100vh - 49px);
@@ -889,10 +1236,12 @@ body.is-resizing-chat {
     min-height: 0;
   }
 
+  /* 移动端不支持横向拖拽调整宽度，隐藏拖拽手柄 */
   .chat-resizer {
     display: none;
   }
 
+  /* 聊天面板变为全宽的底部抽屉，可以展开/收起 */
   .chat-panel {
     width: 100%;
     flex-shrink: 0;
@@ -907,6 +1256,7 @@ body.is-resizing-chat {
     overflow: hidden;
   }
 
+  /* 移动端专用的折叠条：点击可展开/收起聊天面板 */
   .chat-toggle-bar {
     display: flex;
     align-items: center;
@@ -921,205 +1271,28 @@ body.is-resizing-chat {
     flex-shrink: 0;
   }
 
+  /* 折叠条右侧的箭头图标 */
   .chat-toggle-bar .chevron {
     color: #8a8d95;
     transition: transform 0.2s ease;
   }
 
+  /* 折叠状态下箭头旋转，指示“点击可展开” */
   .chat-panel.collapsed .chevron {
     transform: rotate(-90deg);
   }
 
+  /* 移动端聊天面板标题栏内边距收紧 */
   .chat-header {
     padding: 10px 16px;
   }
 
-  .chat-input-hint {
-    display: none;
-  }
-
+  /* 移动端弹幕字号从 14px 调大到 16px，屏幕小但弹幕仍要清晰可读 */
   .danmaku-item {
-    font-size: 16px; /* 从 14px 调大，移动端屏幕小但弹幕仍要清晰可读 */
+    font-size: 16px;
   }
 }
 
-/* 更窄的屏幕（常见手机竖屏）进一步压缩间距 */
-@media (max-width: 420px) {
-  .video-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 8px;
-  }
-
-  .chat-input-area {
-    padding: 8px;
-  }
-
-  .emoji-picker {
-    grid-template-columns: repeat(6, 1fr);
-  }
-}
-
-/* ---- 面包屑导航 ---- */
-.breadcrumb {
-  max-width: 1200px;
-  margin: 14px auto 0;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px;
-  font-size: 13px;
-  color: #9a9da5;
-  min-height: 28px;
-}
-
-.crumb-btn {
-  background: transparent;
-  border: none;
-  color: #5a8dee;
-  font-size: 13px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.crumb-btn:hover {
-  background: #262932;
-  color: #fff;
-}
-
-.crumb-sep {
-  color: #4a4d55;
-  padding: 0 2px;
-  user-select: none;
-}
-
-.crumb-current {
-  color: #e8e8e8;
-  font-weight: 500;
-  padding: 2px 4px;
-}
-
-/* ---- 文件夹卡片 ---- */
-.folder-card {
-  border-style: dashed;
-}
-
-.folder-card:hover {
-  border-color: #e8a63a;
-}
-
-.folder-thumb {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #1a1c22;
-}
-
-.folder-icon {
-  font-size: 40px;
-  line-height: 1;
-}
-
-@media (max-width: 860px) {
-  .breadcrumb {
-    padding: 0 14px;
-    margin-top: 10px;
-    font-size: 12px;
-  }
-  .crumb-btn {
-    font-size: 12px;
-  }
-}
-
-
-/* ---- 历史消息分隔线 ---- */
-.history-divider {
-  text-align: center;
-  font-size: 11px;
-  color: #5a5d65;
-  padding: 4px 0 8px;
-  position: relative;
-}
-.history-divider::before,
-.history-divider::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: 28%;
-  height: 1px;
-  background: #2c3038;
-}
-.history-divider::before { left: 0; }
-.history-divider::after  { right: 0; }
-
-/* ---- 独立聊天页容器 ---- */
-.chat-standalone {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 57px);
-  max-width: 1080px;
-  margin: 0 auto;
-  width: 100%;
-  background: #1a1c22;
-}
-
-/* 独立聊天页消息区可以更宽，气泡最多占 85% */
-.chat-standalone .msg .bubble {
-  max-width: 85%;
-}
-
-@media (max-width: 860px) {
-  .chat-standalone { max-width: 100%; }
-  .msg .bubble, .msg.self .bubble { max-width: 88%; }
-}
-
-a.btn-ghost {
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-
-/* ---- 聊天头像 ---- */
-.msg-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;               /* 头像和名字之间 */
-  margin-bottom: 6px;     /* 名字行和气泡之间 */
-}
-.msg.self .msg-meta {
-  flex-direction: row-reverse;
-}
-.avatar {
-  width: 34px;            /* 稍微大一点 */
-  height: 34px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: #2c3038;
-  border: 1px solid #3a3d45;  /* 细描边，和背景分离 */
-}
-.avatar-initial {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3a5da0, #2a4080); /* 渐变更好看 */
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid #4a6db0;
-  user-select: none;
-}
-
-.custom-line {
-  width: 100px;                 /* 限制横线的宽度 */
-  height: 1.55px;                 /* 控制横线的粗细 */
-  background: linear-gradient(to right, #ff7e5f, #feb47b); /* 渐变色横线 */
-  margin: 10px auto;              /* 让这条短横线在页面居中 */
-  border-radius: 2px;          /* 让线条两端带有一点圆角 */
-}
+/* =========================================================
+   播放页结束 (player.html)
+   ========================================================= */
