@@ -1117,7 +1117,7 @@ a.btn-ghost {
 }
 
 .custom-line {
-  width: 90px;                 /* 限制横线的宽度 */
+  width: 100px;                 /* 限制横线的宽度 */
   height: 1.55px;                 /* 控制横线的粗细 */
   background: linear-gradient(to right, #ff7e5f, #feb47b); /* 渐变色横线 */
   margin: 10px auto;              /* 让这条短横线在页面居中 */

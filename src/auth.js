@@ -99,8 +99,6 @@ router.post('/api/login', async (req, res) => {
     clearFailures(req, username);
 
     // 防止 Session Fixation：登录成功后重新生成 session id
-    
-    clearFailures(req, username);
     const userData = await getUserData(username);
     req.session.regenerate((err) => {
       if (err) {

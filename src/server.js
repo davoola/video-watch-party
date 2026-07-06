@@ -138,6 +138,14 @@ app.get('/player.html', requireAuthPage, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'player.html'));
 });
 
+// chat.html（独立聊天室页面）同样必须登录后才能访问，和 index.html / player.html 保持一致
+// 之前这条路由被遗漏，导致 chat.html 会被下面的 express.static 直接放行，未登录也能打开页面本身
+// （虽然 chat.js 里 loadMe() 请求 /api/me 失败后会把人跳转回登录页，实际数据不会泄露，
+// 但页面本身对未登录用户可见仍然不符合其它页面的鉴权预期，这里补齐保持一致）
+app.get('/chat.html', requireAuthPage, (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'chat.html'));
+});
+
 app.get('/', (req, res) => {
   res.redirect(req.session && req.session.user ? '/index.html' : '/login.html');
 });
