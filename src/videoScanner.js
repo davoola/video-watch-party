@@ -4,6 +4,13 @@ const { VIDEO_DIR } = require('./config');
 
 const ALLOWED_EXT = new Set(['.mp4', '.mkv', '.webm', '.mov', '.m4v', '.avi']);
 
+// 视频同级目录下允许展示"下载链接"的文档 / 压缩包扩展名。
+// 分成两个集合只是为了语义清晰（文档 vs 压缩包），实际处理逻辑完全一样，
+// 对外统一按 DOWNLOADABLE_EXT 这个合集来判断。
+const DOC_EXT = new Set(['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.md', '.txt']);
+const ARCHIVE_EXT = new Set(['.zip', '.7z', '.rar']);
+const DOWNLOADABLE_EXT = new Set([...DOC_EXT, ...ARCHIVE_EXT]);
+
 // 视频列表缓存：避免每次 GET /api/videos 都重新递归遍历整个目录。
 // 视频库通常不会频繁变动，30 秒的过期时间在"及时看到新视频"和"减少磁盘 I/O"之间是个合理折中。
 const CACHE_TTL_MS = 30_000;
@@ -166,6 +173,94 @@ function scanDirContents(relDir) {
   return { dirs, videos };
 }
 
+// 返回指定相对目录下的"相关附件"（不递归）：docx/doc/xlsx/xls/pptx/ppt/pdf/md/txt/zip/7z/rar。
+// relDir: 相对于 VIDEO_DIR 的路径，'' 表示根目录；和 scanDirContents 是同一个目录，
+// 只是这里只关心文档/压缩包，视频列表页浏览到某个目录时会同时调用这两个函数。
+// 返回 null 表示目录本身不合法（不存在/越权），返回 [] 表示该目录下没有符合条件的文件。
+function scanDirDownloads(relDir) {
+  const targetDir = relDir ? path.join(VIDEO_DIR, relDir) : VIDEO_DIR;
+
+  // 安全校验：防止路径穿越攻击（如 dir=../../etc），和 scanDirContents 保持一致
+  const normalizedRoot = path.resolve(VIDEO_DIR);
+  const normalizedTarget = path.resolve(targetDir);
+  const isRoot = normalizedTarget === normalizedRoot;
+  const isInside = normalizedTarget.startsWith(normalizedRoot + path.sep);
+  if (!isRoot && !isInside) return null;
+
+  let entries;
+  try {
+    entries = fs.readdirSync(targetDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue; // 跳过隐藏文件
+    if (!entry.isFile()) continue;
+
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!DOWNLOADABLE_EXT.has(ext)) continue;
+
+    const entryRelPath = relDir ? relDir + '/' + entry.name : entry.name;
+    let size = 0;
+    try {
+      size = fs.statSync(path.join(targetDir, entry.name)).size;
+    } catch {
+      // 文件可能在扫描过程中被删除，忽略
+    }
+
+    files.push({
+      id: encodeId(entryRelPath),
+      name: entry.name,
+      sizeBytes: size,
+    });
+  }
+
+  files.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+  return files;
+}
+
+// 将下载链接里的 id 安全地解析为磁盘上的真实绝对路径，供 docDownload.js 使用。
+// 逻辑和 resolveVideoPath 基本一致，只是允许的扩展名换成了 DOWNLOADABLE_EXT。
+function resolveDownloadPath(id) {
+  let relPath;
+  try {
+    relPath = decodeId(id);
+  } catch {
+    return null;
+  }
+
+  const fullPath = path.resolve(VIDEO_DIR, relPath);
+  const normalizedRoot = path.resolve(VIDEO_DIR) + path.sep;
+
+  if (!fullPath.startsWith(normalizedRoot)) {
+    return null; // 试图跳出根目录，拒绝
+  }
+
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+    return null;
+  }
+
+  const ext = path.extname(fullPath).toLowerCase();
+  if (!DOWNLOADABLE_EXT.has(ext)) {
+    return null; // 只允许下载文档/压缩包扩展名的文件
+  }
+
+  return fullPath;
+}
+
 //module.exports = { scanVideos, resolveVideoPath, encodeId, decodeId, ALLOWED_EXT, invalidateVideoCache };
 
-module.exports = { scanVideos, scanDirContents, resolveVideoPath, encodeId, decodeId, ALLOWED_EXT, invalidateVideoCache };
+module.exports = {
+  scanVideos,
+  scanDirContents,
+  resolveVideoPath,
+  encodeId,
+  decodeId,
+  ALLOWED_EXT,
+  invalidateVideoCache,
+  scanDirDownloads,
+  resolveDownloadPath,
+  DOWNLOADABLE_EXT,
+};

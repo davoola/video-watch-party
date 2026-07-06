@@ -12,6 +12,7 @@ const videoApiRouter = require('./videoApi');
 const { streamVideo } = require('./videoStream');
 const { handleChatImageUpload, serveChatImage, cleanupOldChatImages } = require('./chatUpload');
 const { getOrCreateThumbnail, checkFfmpegAvailable } = require('./thumbnail');
+const { downloadDoc } = require('./docDownload');
 const { initSocket } = require('./socket');
 
 const app = express();
@@ -106,6 +107,9 @@ app.use(videoApiRouter);
 
 // ---- 视频流（需要登录） ----
 app.get('/video-stream/:id', requireAuth, streamVideo);
+
+// ---- 同级目录文档/压缩包下载（需要登录）：播放页“视频下方下载区”用 ----
+app.get('/doc-download/:id', requireAuth, downloadDoc);
 
 // ---- 聊天图片：上传与访问都需要登录 ----
 app.post('/api/chat-upload', requireAuth, handleChatImageUpload);

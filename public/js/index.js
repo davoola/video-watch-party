@@ -4,6 +4,8 @@ const logoutBtn = document.getElementById('logoutBtn');
 const presenceBanner = document.getElementById('presenceBanner');
 const breadcrumbEl = document.getElementById('breadcrumb');
 const brandLogo = document.getElementById('brandLogo');
+const attachmentsEl = document.getElementById('attachments');
+const attachmentsListEl = document.getElementById('attachmentsList');
 
 brandLogo.addEventListener('error', () => { brandLogo.style.display = 'none'; });
 
@@ -54,6 +56,7 @@ async function browseDir(dir) {
   currentDir = dir;
   renderBreadcrumb(dir);
   contentEl.innerHTML = '<div class="empty-state">加载中…</div>';
+  attachmentsEl.hidden = true; // 切换目录时先隐藏，等新目录的附件查询结果回来再决定是否显示
   try {
     const qs = dir ? '?dir=' + encodeURIComponent(dir) : '';
     const res = await fetch('/api/browse' + qs);
@@ -63,6 +66,7 @@ async function browseDir(dir) {
   } catch {
     contentEl.innerHTML = '<div class="empty-state">加载目录失败，请刷新重试</div>';
   }
+  loadAttachments(dir);
 }
 
 function renderDirContents(dirs, videos) {
@@ -113,6 +117,99 @@ function renderDirContents(dirs, videos) {
   contentEl.innerHTML = '';
   contentEl.appendChild(grid);
 }
+
+// ---- 相关附件（当前浏览目录下的 docx/xlsx/pptx/pdf/md/txt/压缩包等） ----
+// 内置的文件类型图标：按扩展名分组给一个简单的色块 + 文字标签，不依赖任何外部图片资源。
+const FILE_ICON_MAP = {
+  doc: { label: 'DOC', color: '#3b6fd6' },
+  docx: { label: 'DOC', color: '#3b6fd6' },
+  xls: { label: 'XLS', color: '#1e8e5a' },
+  xlsx: { label: 'XLS', color: '#1e8e5a' },
+  ppt: { label: 'PPT', color: '#d9622b' },
+  pptx: { label: 'PPT', color: '#d9622b' },
+  pdf: { label: 'PDF', color: '#d64545' },
+  md: { label: 'MD', color: '#6a7280' },
+  txt: { label: 'TXT', color: '#6a7280' },
+  zip: { label: 'ZIP', color: '#c9a227' },
+  '7z': { label: '7Z', color: '#c9a227' },
+  rar: { label: 'RAR', color: '#c9a227' },
+};
+
+// 生成"文件图标"的 SVG：一张带折角的纸 + 居中的扩展名文字。
+// 这里的输入只来自上面写死的 FILE_ICON_MAP（不是用户输入），拼进 innerHTML 是安全的。
+function fileIconSvg(ext) {
+  const info = FILE_ICON_MAP[ext] || { label: ext.toUpperCase().slice(0, 3), color: '#6a7280' };
+  return `<svg viewBox="0 0 32 32" width="28" height="28" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M7 2h13l6 6v22a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="${info.color}"/>
+    <path d="M20 2v6h6" fill="rgba(255,255,255,0.55)"/>
+    <text x="16" y="23" font-size="8" font-family="Arial, sans-serif" font-weight="700" fill="#fff" text-anchor="middle">${info.label}</text>
+  </svg>`;
+}
+
+// 请求"当前目录"的相关附件列表；用 requestDir 记录发起请求时的目录，
+// 结果回来时如果用户已经切换到别的目录了，就丢弃这次结果，避免附件栏目显示错目录的内容。
+async function loadAttachments(requestDir) {
+  try {
+    const qs = requestDir ? '?dir=' + encodeURIComponent(requestDir) : '';
+    const res = await fetch('/api/dir-docs' + qs);
+    if (res.status === 401) { window.location.href = '/login.html'; return; }
+    if (!res.ok) return;
+    const data = await res.json();
+    if (requestDir !== currentDir) return; // 目录已经切换，结果过期，丢弃
+    renderAttachments(data.files || []);
+  } catch {
+    // 附件加载失败不影响正常看视频列表，静默忽略即可
+  }
+}
+
+function renderAttachments(files) {
+  if (!files.length) {
+    attachmentsEl.hidden = true;
+    attachmentsListEl.innerHTML = '';
+    return;
+  }
+
+  attachmentsListEl.innerHTML = '';
+  files.forEach((f) => {
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+
+    const row = document.createElement('div');
+    row.className = 'attachment-item';
+
+    const icon = document.createElement('span');
+    icon.className = 'attachment-icon';
+    icon.innerHTML = fileIconSvg(ext);
+
+    const info = document.createElement('div');
+    info.className = 'attachment-info';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'attachment-name';
+    nameEl.textContent = f.name;
+    nameEl.title = f.name;
+
+    const sizeEl = document.createElement('div');
+    sizeEl.className = 'attachment-size';
+    sizeEl.textContent = formatSize(f.sizeBytes);
+
+    info.appendChild(nameEl);
+    info.appendChild(sizeEl);
+
+    const link = document.createElement('a');
+    link.className = 'attachment-download';
+    link.href = f.downloadUrl;
+    link.download = f.name; // 提示浏览器按下载而不是导航打开
+    link.textContent = '下载';
+
+    row.appendChild(icon);
+    row.appendChild(info);
+    row.appendChild(link);
+    attachmentsListEl.appendChild(row);
+  });
+
+  attachmentsEl.hidden = false;
+}
+
 
 
 function goToPlayer(id, name) {
