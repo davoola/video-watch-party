@@ -99,6 +99,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// ---- 站点名称配置：不需要登录也能访问，因为登录页本身也要显示站点名称 ----
+app.get('/api/site-config', (req, res) => {
+  res.json({ siteName: config.SITE_NAME });
+});
+
 // ---- 认证相关 API（登录/登出/当前用户） ----
 app.use(authRouter);
 
@@ -108,7 +113,7 @@ app.use(videoApiRouter);
 // ---- 视频流（需要登录） ----
 app.get('/video-stream/:id', requireAuth, streamVideo);
 
-// ---- 同级目录文档/压缩包下载（需要登录）：播放页“视频下方下载区”用 ----
+// ---- 相关附件下载（需要登录）：视频列表页"相关附件"区域用 ----
 app.get('/doc-download/:id', requireAuth, downloadDoc);
 
 // ---- 聊天图片：上传与访问都需要登录 ----

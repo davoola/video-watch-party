@@ -8,6 +8,10 @@ const VIDEO_DIR = process.env.VIDEO_DIR;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const USERS_FILE = path.join(__dirname, '..', 'config', 'users.json');
 
+// 站点名称：显示在浏览器标签页标题、首页顶部品牌区等位置。
+// 不设置的话保留原来的默认值"私密影院"，不影响现有部署。
+const SITE_NAME = process.env.SITE_NAME || '私密影院';
+
 // 是否信任反向代理（nginx/Caddy 等）传来的 X-Forwarded-* 头。
 // 只有在确实有反向代理挡在前面时才应该开启——否则客户端可以直接伪造这些头，
 // 冒充任意 IP 或冒充 HTTPS 连接，带来安全隐患。
@@ -68,6 +72,7 @@ module.exports = {
   THUMBNAIL_DIR,
   TRUST_PROXY,
   CHAT_IMAGE_RETENTION_DAYS,
+  SITE_NAME,
   isProduction: NODE_ENV === 'production',
   validateConfig,
 };
