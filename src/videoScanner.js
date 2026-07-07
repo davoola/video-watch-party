@@ -124,17 +124,27 @@ function resolveVideoPath(id) {
   return fullPath;
 }
 
-// 返回指定相对目录下的直接子目录和视频文件（不递归）
-// relDir: 相对于 VIDEO_DIR 的路径，'' 表示根目录
-function scanDirContents(relDir) {
+// 把"相对于 VIDEO_DIR 的子目录路径"安全地解析成磁盘上的绝对路径；
+// 如果这个路径试图跳出 VIDEO_DIR（路径穿越攻击，如 dir=../../etc），返回 null。
+// scanDirContents 和 scanDirDownloads 都是"读某个目录下的直接子项"，只是关心的
+// 文件类型不同，这部分路径校验逻辑完全一样，提出来共用一份，避免以后改一处忘了改另一处。
+function resolveSubDir(relDir) {
   const targetDir = relDir ? path.join(VIDEO_DIR, relDir) : VIDEO_DIR;
 
-  // 安全校验：防止路径穿越攻击（如 dir=../../etc）
   const normalizedRoot = path.resolve(VIDEO_DIR);
   const normalizedTarget = path.resolve(targetDir);
   const isRoot = normalizedTarget === normalizedRoot;
   const isInside = normalizedTarget.startsWith(normalizedRoot + path.sep);
   if (!isRoot && !isInside) return null;
+
+  return targetDir;
+}
+
+// 返回指定相对目录下的直接子目录和视频文件（不递归）
+// relDir: 相对于 VIDEO_DIR 的路径，'' 表示根目录
+function scanDirContents(relDir) {
+  const targetDir = resolveSubDir(relDir);
+  if (!targetDir) return null; // 路径穿越，拒绝
 
   let entries;
   try {
@@ -178,14 +188,8 @@ function scanDirContents(relDir) {
 // 只是这里只关心文档/压缩包，视频列表页浏览到某个目录时会同时调用这两个函数。
 // 返回 null 表示目录本身不合法（不存在/越权），返回 [] 表示该目录下没有符合条件的文件。
 function scanDirDownloads(relDir) {
-  const targetDir = relDir ? path.join(VIDEO_DIR, relDir) : VIDEO_DIR;
-
-  // 安全校验：防止路径穿越攻击（如 dir=../../etc），和 scanDirContents 保持一致
-  const normalizedRoot = path.resolve(VIDEO_DIR);
-  const normalizedTarget = path.resolve(targetDir);
-  const isRoot = normalizedTarget === normalizedRoot;
-  const isInside = normalizedTarget.startsWith(normalizedRoot + path.sep);
-  if (!isRoot && !isInside) return null;
+  const targetDir = resolveSubDir(relDir);
+  if (!targetDir) return null; // 路径穿越，拒绝
 
   let entries;
   try {
@@ -249,8 +253,6 @@ function resolveDownloadPath(id) {
 
   return fullPath;
 }
-
-//module.exports = { scanVideos, resolveVideoPath, encodeId, decodeId, ALLOWED_EXT, invalidateVideoCache };
 
 module.exports = {
   scanVideos,

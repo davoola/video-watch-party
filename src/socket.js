@@ -54,6 +54,12 @@ function initSocket(io) {
   // 注意这仍然只存在内存里，服务进程重启后会丢失——如果需要跨重启保留，可以在这里
   // 加一个定期写入磁盘/数据库的持久化层。
   const roomState = new Map();
+  // roomName -> 房间成员清零那一刻的时间戳。用来给 roomHistory/roomState 做延迟清理：
+  // 不能一空room就立刻删——两人都短暂断线重连、或者只是切换到别的视频再切回来，
+  // 都会让房间"瞬间清零"，这时候恰恰是最需要保留历史/进度的场景。所以只清理那些
+  // "已经空了很久"（STALE_ROOM_MS）的房间，兼顾"不无限增长"和"重连体验"两头。
+  const roomLastEmptyAt = new Map();
+  const STALE_ROOM_MS = 24 * 60 * 60 * 1000; // 房间空置超过 24 小时才清理其历史/进度缓存
 
   // 关键：Socket.IO 在触发 'disconnect' 事件之前，会先把 socket.rooms 清空，
   // 所以不能在 disconnect 处理函数里用 socket.rooms 来判断"这个 socket 刚才在哪个房间"
@@ -77,6 +83,7 @@ function initSocket(io) {
     const users = roomMembers.get(room);
     if (!users.has(user)) users.set(user, new Set());
     users.get(user).add(socketId);
+    roomLastEmptyAt.delete(room); // 房间又有人了，取消"待清理"标记
   }
 
   // 从房间里移除某一个 socket 连接；只有当这个用户在该房间里已经没有其它连接
@@ -90,7 +97,10 @@ function initSocket(io) {
       sockets.delete(socketId);
       if (sockets.size === 0) users.delete(user);
     }
-    if (users.size === 0) roomMembers.delete(room);
+    if (users.size === 0) {
+      roomMembers.delete(room);
+      roomLastEmptyAt.set(room, Date.now()); // 记录清零时间，供下面的定期清理使用
+    }
     return !users.has(user);
   }
 
@@ -98,6 +108,20 @@ function initSocket(io) {
     const users = roomMembers.get(room);
     return users ? Array.from(users.keys()) : [];
   }
+
+  // 定期清理长期空置的房间对应的聊天记录/播放进度缓存，避免"打开过的视频越多、
+  // 内存占用越大、永远不会回落"。只清理已经空了超过 STALE_ROOM_MS 的房间——
+  // 短暂断线重连、或者两人切换到别的视频又切回来，都不会触碰到这个阈值。
+  setInterval(() => {
+    const now = Date.now();
+    for (const [room, emptyAt] of roomLastEmptyAt.entries()) {
+      if (now - emptyAt >= STALE_ROOM_MS) {
+        roomHistory.delete(room);
+        roomState.delete(room);
+        roomLastEmptyAt.delete(room);
+      }
+    }
+  }, 60 * 60 * 1000).unref(); // 每小时扫一次，足够及时又不会太频繁
 
   function pushHistory(room, msg) {
     const history = roomHistory.get(room) || [];
@@ -206,6 +230,10 @@ function initSocket(io) {
       if (typeof time !== 'number' || !Number.isFinite(time) || time < 0) return;
 
       const room = ROOM_PREFIX + videoId;
+      // 必须是真的通过 join-room 进过这个房间的连接，才允许对它发播放控制指令，
+      // 否则任何知道 videoId 的客户端都能伪造播放/暂停/跳进度广播给房间里的人。
+      if (socketCurrentRoom.get(socket.id) !== room) return;
+
       roomState.set(room, { action, time, updatedAt: Date.now() });
       socket.to(room).emit('video-action', { action, time, from: username, ts: Date.now() });
     });
@@ -218,6 +246,10 @@ function initSocket(io) {
       if (!videoId || typeof videoId !== 'string') return;
 
       const room = ROOM_PREFIX + videoId;
+      // 必须是真的通过 join-room 进过这个房间的连接，才允许往这个房间发消息，
+      // 否则任何知道 videoId 的客户端都能伪造消息写进 roomHistory，
+      // 下次有人真正加入该房间时就会看到这些伪造的历史消息。
+      if (socketCurrentRoom.get(socket.id) !== room) return;
 
       if (type === 'image') {
         const { imageUrl } = data;

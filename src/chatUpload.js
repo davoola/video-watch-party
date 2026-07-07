@@ -103,8 +103,6 @@ function serveChatImage(req, res) {
   });
 }
 
-module.exports = { handleChatImageUpload, serveChatImage, isValidChatImageFilename, MAX_FILE_SIZE, cleanupOldChatImages };
-
 // 清理超过保留期限的聊天图片。用异步 API（不是 readdirSync/statSync/unlinkSync），
 // 避免在文件数量较多时同步阻塞事件循环。
 // CHAT_IMAGE_RETENTION_DAYS 设为 0 表示关闭自动清理（保留所有图片）。
@@ -142,3 +140,5 @@ async function cleanupOldChatImages() {
     console.log(`[聊天图片清理] 已删除 ${deletedCount} 张超过 ${CHAT_IMAGE_RETENTION_DAYS} 天的聊天图片`);
   }
 }
+
+module.exports = { handleChatImageUpload, serveChatImage, isValidChatImageFilename, MAX_FILE_SIZE, cleanupOldChatImages };
