@@ -22,14 +22,20 @@ async function loadUsers() {
   }
 }
 
+// 校验用户名密码，成功时把该用户的数据（含 avatar）一并返回，
+// 这样登录流程只需要读取/解析一次 users.json，不用校验完密码后
+// 再单独调一次 getUserData 重新读一遍同一个文件。
+// 返回 { ok: true, userData } 或 { ok: false, userData: null }。
 async function verifyCredentials(username, password) {
   const users = await loadUsers();
-  const userObj = users[username];
+  const userObj = users[username] || null;
   const hash = userObj ? userObj.hash : null;
 
   const DUMMY_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8b7XJP9wcOMo.M3KKDp6IsQHN0sQzS';
   const isMatch = await bcrypt.compare(password, hash || DUMMY_HASH);
-  return Boolean(hash) && isMatch;
+  const ok = Boolean(hash) && isMatch;
+
+  return { ok, userData: ok ? userObj : null };
 }
 
 async function getUserData(username) {

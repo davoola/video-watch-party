@@ -11,6 +11,14 @@ const { resolveVideoPath } = require('./videoScanner');
 const ROOM_PREFIX = 'video:';
 const LOBBY_ROOM = 'lobby';
 
+// 独立聊天室页面（chat.html / public/js/chat.js）用的固定房间 ID，不对应任何真实视频文件。
+// join-room 下面本来会用 videoId 反查真实视频文件名（防止 videoName 被伪造），
+// 但这个 ID 从设计上就不是视频，反查必然失败，导致独立聊天室永远无法加入房间——
+// 这里显式把它做成白名单特例，跳过"必须是真实视频"的校验。
+// 注意要和 public/js/chat.js 里的 CHAT_ROOM_ID 保持完全一致。
+const CHAT_LOBBY_ROOM_ID = '__lobby_chat__';
+const CHAT_LOBBY_ROOM_NAME = '聊天室';
+
 const CHAT_HISTORY_MAX = 50; // 每个房间最多保留多少条聊天记录（内存里，重启会清空）
 
 // ---- 简单的滑动窗口限流器：用于聊天消息和播放控制事件，防止脚本刷屏/恶意消耗 ----
@@ -140,9 +148,8 @@ function initSocket(io) {
   }
 
   io.on('connection', (socket) => {
-    //const username = socket.user; // 由 server.js 里的 io.use() 鉴权中间件注入
-	const username = socket.request.session.user;
-	const avatar = socket.request.session.avatar || null;   // ← 新增
+    const username = socket.request.session.user;
+    const avatar = socket.request.session.avatar || null;
 
     socket.join(LOBBY_ROOM);
 
@@ -161,13 +168,19 @@ function initSocket(io) {
     socket.on('join-room', ({ videoId }) => {
       if (!videoId || typeof videoId !== 'string') return;
 
-      // 视频名不再信任客户端传来的字段——之前直接把客户端传的 videoName 存进
-      // userLocations 再广播给所有人，恶意客户端可以随意伪造文字显示在对方的
-      // "对方正在观看"提示里。这里改成用 videoId 反查真实的视频文件名，
-      // 查不到（视频不存在或无权访问）就直接忽略这次 join-room。
-      const videoFullPath = resolveVideoPath(videoId);
-      if (!videoFullPath) return;
-      const videoName = path.basename(videoFullPath);
+      let videoName;
+      if (videoId === CHAT_LOBBY_ROOM_ID) {
+        // 独立聊天室不是真实视频，不需要（也没法）反查文件名，直接用固定名字
+        videoName = CHAT_LOBBY_ROOM_NAME;
+      } else {
+        // 视频名不再信任客户端传来的字段——之前直接把客户端传的 videoName 存进
+        // userLocations 再广播给所有人，恶意客户端可以随意伪造文字显示在对方的
+        // "对方正在观看"提示里。这里改成用 videoId 反查真实的视频文件名，
+        // 查不到（视频不存在或无权访问）就直接忽略这次 join-room。
+        const videoFullPath = resolveVideoPath(videoId);
+        if (!videoFullPath) return;
+        videoName = path.basename(videoFullPath);
+      }
 
       const room = ROOM_PREFIX + videoId;
 
@@ -259,7 +272,7 @@ function initSocket(io) {
 
         const msg = {
           from: username,
-		  avatar, 
+          avatar,
           type: 'image',
           imageUrl: `/chat-image/${filename}`,
           ts: Date.now(),
@@ -278,7 +291,7 @@ function initSocket(io) {
 
       const msg = {
         from: username,
-		avatar, 
+        avatar,
         type: 'text',
         text: trimmed,
         ts: Date.now(),
