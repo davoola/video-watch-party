@@ -243,21 +243,21 @@ function renderPresenceBanner(users) {
         <div><span class="dot offline"></span>${escapeHtml(u.username)} 当前不在线</div>
       </div>`;
     }
-    
-	if (u.location) {
-	  if (u.location.videoId === '__lobby_chat__') {
-		return `<div class="presence-card">
-			<div><span class="dot online"></span>${escapeHtml(u.username)} 正在聊天中</div>
-			<button class="join-btn" data-id="__lobby_chat__" data-name="聊天室">加入聊天</button>
-		</div>`;
-		}
-	  const name = escapeHtml(u.location.videoName || '某个视频');
-	  return `<div class="presence-card">
-		<div><span class="dot online"></span>${escapeHtml(u.username)} 正在观看《${name}》</div>
-		<button class="join-btn" data-id="${escapeAttr(u.location.videoId)}" data-name="${escapeAttr(u.location.videoName || '')}">加入TA观看</button>
-		</div>`;
-	}
-	
+
+    if (u.location) {
+      if (u.location.videoId === '__lobby_chat__') {
+        return `<div class="presence-card">
+          <div><span class="dot online"></span>${escapeHtml(u.username)} 正在聊天中</div>
+          <button class="join-btn" data-id="__lobby_chat__" data-name="聊天室">加入聊天</button>
+        </div>`;
+      }
+      const name = escapeHtml(u.location.videoName || '某个视频');
+      return `<div class="presence-card">
+        <div><span class="dot online"></span>${escapeHtml(u.username)} 正在观看《${name}》</div>
+        <button class="join-btn" data-id="${escapeAttr(u.location.videoId)}" data-name="${escapeAttr(u.location.videoName || '')}">加入TA观看</button>
+      </div>`;
+    }
+
     return `<div class="presence-card">
       <div><span class="dot idle"></span>${escapeHtml(u.username)} 正在浏览视频列表</div>
     </div>`;

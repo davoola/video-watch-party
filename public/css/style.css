@@ -539,11 +539,16 @@ a.btn-ghost {
   display: none;
 }
 
-/* 栏目标题（"📎 相关附件"）：颜色和面包屑里的"🏠 根目录"保持一致（同用 #5a8dee 这个蓝色强调色） */
+/* 栏目标题（"🗂️ 相关附件"）：颜色和面包屑里的"🏠 根目录"保持一致（同用 #5a8dee 这个蓝色强调色） */
 .attachments-title {
   font-size: 13px;
   color: #5a8dee;
-  margin-bottom: 8px;
+  margin-bottom: 20px;
+}
+
+.attachments-title:hover {
+  color: #fff;
+  cursor: pointer;
 }
 
 /* 附件列表容器：卡片背景，内部每一行之间用分隔线隔开 */

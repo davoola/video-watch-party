@@ -95,7 +95,7 @@ function buildEmojiPicker() {
       chatInput.value += emoji;
       chatInput.focus();
       chatInput.dispatchEvent(new Event('input'));
-	  emojiPicker.hidden = true; 
+      emojiPicker.hidden = true;
     });
     emojiPicker.appendChild(btn);
   });

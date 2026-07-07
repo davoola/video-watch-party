@@ -117,6 +117,13 @@ function initSocket(io) {
     return users ? Array.from(users.keys()) : [];
   }
 
+  // 独立聊天室和普通视频房间共用同一套 join-room/disconnect 逻辑，
+  // 但系统提示文案要分开："聊天室"用"加入/离开了聊天室"，视频房间用"...观影房间"，
+  // 不能不管房间类型统一写死"观影房间"。
+  function roomLabel(room) {
+    return room === ROOM_PREFIX + CHAT_LOBBY_ROOM_ID ? '聊天室' : '观影房间';
+  }
+
   // 定期清理长期空置的房间对应的聊天记录/播放进度缓存，避免"打开过的视频越多、
   // 内存占用越大、永远不会回落"。只清理已经空了超过 STALE_ROOM_MS 的房间——
   // 短暂断线重连、或者两人切换到别的视频又切回来，都不会触碰到这个阈值。
@@ -193,7 +200,7 @@ function initSocket(io) {
           io.to(r).emit('room-presence', { members: getRoomMembers(r) });
           if (fullyLeft) {
             socket.to(r).emit('chat-system', {
-              text: `${username} 离开了观影房间`,
+              text: `${username} 离开了${roomLabel(r)}`,
               ts: Date.now(),
             });
           }
@@ -207,7 +214,7 @@ function initSocket(io) {
       io.to(room).emit('room-presence', { members: getRoomMembers(room) });
 
       socket.to(room).emit('chat-system', {
-        text: `${username} 加入了观影房间`,
+        text: `${username} 加入了${roomLabel(room)}`,
         ts: Date.now(),
       });
 
@@ -306,10 +313,10 @@ function initSocket(io) {
         const fullyLeft = removeMember(room, username, socket.id);
         io.to(room).emit('room-presence', { members: getRoomMembers(room) });
         if (fullyLeft) {
-          // 只有这个用户在房间里的所有连接都断开了，才广播"离开了观影房间"，
+          // 只有这个用户在房间里的所有连接都断开了，才广播"离开了..."，
           // 避免同一个人开着两个标签页时，关掉其中一个就被误判成"离开"（见上面的说明）。
           io.to(room).emit('chat-system', {
-            text: `${username} 离开了观影房间`,
+            text: `${username} 离开了${roomLabel(room)}`,
             ts: Date.now(),
           });
         }
