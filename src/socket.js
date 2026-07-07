@@ -4,7 +4,9 @@
 // 另外维护一个"大厅"概念：所有已登录的 socket 连接（无论是在视频列表页还是播放页）
 // 都会被记录当前位置，广播给所有人，这样在列表页也能看到"对方正在看哪个视频"。
 
+const path = require('path');
 const { isValidChatImageFilename } = require('./chatUpload');
+const { resolveVideoPath } = require('./videoScanner');
 
 const ROOM_PREFIX = 'video:';
 const LOBBY_ROOM = 'lobby';
@@ -40,8 +42,18 @@ function createRateLimiter(maxEvents, windowMs) {
 }
 
 function initSocket(io) {
-  const roomMembers = new Map(); // roomName -> Set(username)
+  // roomName -> Map<username, Set<socket.id>>。
+  // 之前这里是 Map<roomName, Set<username>>，同一个用户开两个标签页都进同一个房间时，
+  // 只要有一个标签页断开，就会把这个用户名从房间的成员集合里整个删掉——哪怕另一个标签页
+  // 还在线，也会误触发"XX 离开了观影房间"的提示。改成按 socket.id 记录之后，
+  // 只有当一个用户在某个房间里的所有连接都断开时，才真正判定为"离开"。
+  const roomMembers = new Map();
   const roomHistory = new Map(); // roomName -> 最近的聊天消息数组（环形缓冲，最多 CHAT_HISTORY_MAX 条）
+  // roomName -> { action, time, updatedAt }：记录房间最近一次的播放状态（播放/暂停/进度），
+  // 这样两人都断线重连后，新加入的连接会先被同步到"大家上次看到哪"，而不是永远从头开始。
+  // 注意这仍然只存在内存里，服务进程重启后会丢失——如果需要跨重启保留，可以在这里
+  // 加一个定期写入磁盘/数据库的持久化层。
+  const roomState = new Map();
 
   // 关键：Socket.IO 在触发 'disconnect' 事件之前，会先把 socket.rooms 清空，
   // 所以不能在 disconnect 处理函数里用 socket.rooms 来判断"这个 socket 刚才在哪个房间"
@@ -60,16 +72,31 @@ function initSocket(io) {
   const actionRateAllowed = createRateLimiter(30, 5000);
 
   // ---- 房间成员维护（之前误放在每次连接回调内部重新定义，挪到这里只定义一次） ----
-  function addMember(room, user) {
-    if (!roomMembers.has(room)) roomMembers.set(room, new Set());
-    roomMembers.get(room).add(user);
+  function addMember(room, user, socketId) {
+    if (!roomMembers.has(room)) roomMembers.set(room, new Map());
+    const users = roomMembers.get(room);
+    if (!users.has(user)) users.set(user, new Set());
+    users.get(user).add(socketId);
   }
 
-  function removeMember(room, user) {
-    const set = roomMembers.get(room);
-    if (!set) return;
-    set.delete(user);
-    if (set.size === 0) roomMembers.delete(room);
+  // 从房间里移除某一个 socket 连接；只有当这个用户在该房间里已经没有其它连接
+  // （比如另一个标签页）时，才会把用户名从成员列表里摘除，并返回 true。
+  // 调用方应该只在返回 true 时才广播"XX 离开了观影房间"这类系统消息。
+  function removeMember(room, user, socketId) {
+    const users = roomMembers.get(room);
+    if (!users) return true;
+    const sockets = users.get(user);
+    if (sockets) {
+      sockets.delete(socketId);
+      if (sockets.size === 0) users.delete(user);
+    }
+    if (users.size === 0) roomMembers.delete(room);
+    return !users.has(user);
+  }
+
+  function getRoomMembers(room) {
+    const users = roomMembers.get(room);
+    return users ? Array.from(users.keys()) : [];
   }
 
   function pushHistory(room, msg) {
@@ -107,8 +134,16 @@ function initSocket(io) {
       broadcastLobby();
     });
 
-    socket.on('join-room', ({ videoId, videoName }) => {
+    socket.on('join-room', ({ videoId }) => {
       if (!videoId || typeof videoId !== 'string') return;
+
+      // 视频名不再信任客户端传来的字段——之前直接把客户端传的 videoName 存进
+      // userLocations 再广播给所有人，恶意客户端可以随意伪造文字显示在对方的
+      // "对方正在观看"提示里。这里改成用 videoId 反查真实的视频文件名，
+      // 查不到（视频不存在或无权访问）就直接忽略这次 join-room。
+      const videoFullPath = resolveVideoPath(videoId);
+      if (!videoFullPath) return;
+      const videoName = path.basename(videoFullPath);
 
       const room = ROOM_PREFIX + videoId;
 
@@ -117,16 +152,22 @@ function initSocket(io) {
       for (const r of socket.rooms) {
         if (r.startsWith(ROOM_PREFIX) && r !== room) {
           socket.leave(r);
-          removeMember(r, username);
+          const fullyLeft = removeMember(r, username, socket.id);
+          io.to(r).emit('room-presence', { members: getRoomMembers(r) });
+          if (fullyLeft) {
+            socket.to(r).emit('chat-system', {
+              text: `${username} 离开了观影房间`,
+              ts: Date.now(),
+            });
+          }
         }
       }
 
       socket.join(room);
-      addMember(room, username);
+      addMember(room, username, socket.id);
       socketCurrentRoom.set(socket.id, room);
 
-      const members = Array.from(roomMembers.get(room) || []);
-      io.to(room).emit('room-presence', { members });
+      io.to(room).emit('room-presence', { members: getRoomMembers(room) });
 
       socket.to(room).emit('chat-system', {
         text: `${username} 加入了观影房间`,
@@ -139,8 +180,20 @@ function initSocket(io) {
         socket.emit('chat-history', { messages: history });
       }
 
+      // 把房间最近一次的播放状态（播放/暂停/进度）同步给刚加入的这一个连接，
+      // 这样两人都断线重连后，不用再从头开始，会自动跳到大家上次看到的位置。
+      const savedState = roomState.get(room);
+      if (savedState) {
+        socket.emit('video-action', {
+          action: savedState.action,
+          time: savedState.time,
+          from: null,
+          ts: Date.now(),
+        });
+      }
+
       // 更新大厅位置信息，让列表页也能看到"正在观看 XXX"
-      userLocations.set(username, { videoId, videoName: videoName || '' });
+      userLocations.set(username, { videoId, videoName });
       broadcastLobby();
     });
 
@@ -153,6 +206,7 @@ function initSocket(io) {
       if (typeof time !== 'number' || !Number.isFinite(time) || time < 0) return;
 
       const room = ROOM_PREFIX + videoId;
+      roomState.set(room, { action, time, updatedAt: Date.now() });
       socket.to(room).emit('video-action', { action, time, from: username, ts: Date.now() });
     });
 
@@ -204,13 +258,16 @@ function initSocket(io) {
     socket.on('disconnect', () => {
       const room = socketCurrentRoom.get(socket.id);
       if (room) {
-        removeMember(room, username);
-        const members = Array.from(roomMembers.get(room) || []);
-        io.to(room).emit('room-presence', { members });
-        io.to(room).emit('chat-system', {
-          text: `${username} 离开了观影房间`,
-          ts: Date.now(),
-        });
+        const fullyLeft = removeMember(room, username, socket.id);
+        io.to(room).emit('room-presence', { members: getRoomMembers(room) });
+        if (fullyLeft) {
+          // 只有这个用户在房间里的所有连接都断开了，才广播"离开了观影房间"，
+          // 避免同一个人开着两个标签页时，关掉其中一个就被误判成"离开"（见上面的说明）。
+          io.to(room).emit('chat-system', {
+            text: `${username} 离开了观影房间`,
+            ts: Date.now(),
+          });
+        }
         socketCurrentRoom.delete(socket.id);
       }
 

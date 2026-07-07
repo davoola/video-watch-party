@@ -11,7 +11,7 @@ const { router: authRouter, requireAuth, requireAuthPage } = require('./auth');
 const videoApiRouter = require('./videoApi');
 const { streamVideo } = require('./videoStream');
 const { handleChatImageUpload, serveChatImage, cleanupOldChatImages } = require('./chatUpload');
-const { getOrCreateThumbnail, checkFfmpegAvailable } = require('./thumbnail');
+const { getOrCreateThumbnail, checkFfmpegAvailable, cleanupOrphanedThumbnails } = require('./thumbnail');
 const { downloadDoc } = require('./docDownload');
 const { initSocket } = require('./socket');
 
@@ -190,4 +190,9 @@ server.listen(config.PORT, () => {
   // CHAT_IMAGE_RETENTION_DAYS 设为 0 时，cleanupOldChatImages 内部会直接跳过，不做任何删除。
   cleanupOldChatImages();
   setInterval(cleanupOldChatImages, 24 * 60 * 60 * 1000).unref();
+
+  // 孤儿缩略图清理：原视频被删除/替换后，旧的缩略图缓存文件不会自动消失，
+  // 同样是启动时先跑一次，之后每 24 小时跑一次。
+  cleanupOrphanedThumbnails();
+  setInterval(cleanupOrphanedThumbnails, 24 * 60 * 60 * 1000).unref();
 });

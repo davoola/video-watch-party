@@ -66,15 +66,28 @@ async function streamVideo(req, res) {
     return;
   }
 
-  // 解析 Range 头，例如 "bytes=12345-"
+  // 解析 Range 头，例如 "bytes=12345-"、"bytes=12345-99999"，
+  // 以及"后缀范围"写法 "bytes=-500"（表示"最后 500 字节"，规范允许，
+  // 浏览器在某些跳进度场景下会发出这种请求）。
   const match = range.match(/bytes=(\d*)-(\d*)/);
-  if (!match) {
+  if (!match || (match[1] === '' && match[2] === '')) {
     res.status(416).set('Content-Range', `bytes */${fileSize}`).end();
     return;
   }
 
-  let start = match[1] ? parseInt(match[1], 10) : 0;
-  let end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+  let start;
+  let end;
+  if (match[1] === '') {
+    // 后缀范围：match[1] 为空字符串表示"-"前面没写数字，match[2] 是要取的字节数。
+    // 注意不能直接用 `match[1] ? ... : 0` 这种写法来判断——空字符串本身就是 falsy，
+    // 会被误判成"从 0 开始"，导致返回文件开头而不是文件末尾的内容。
+    const suffixLength = parseInt(match[2], 10);
+    start = Math.max(0, fileSize - suffixLength);
+    end = fileSize - 1;
+  } else {
+    start = parseInt(match[1], 10);
+    end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+  }
 
   if (Number.isNaN(start) || Number.isNaN(end) || start > end || start < 0 || end >= fileSize) {
     res.status(416).set('Content-Range', `bytes */${fileSize}`).end();

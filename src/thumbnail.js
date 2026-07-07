@@ -9,7 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { THUMBNAIL_DIR, VIDEO_DIR } = require('./config');
-const { resolveVideoPath } = require('./videoScanner');
+const { resolveVideoPath, scanVideos } = require('./videoScanner');
 
 let ffmpegAvailable = null; // null = 还没检测过；true/false = 检测结果缓存
 let ffmpegCheckPromise = null;
@@ -146,4 +146,54 @@ async function getOrCreateThumbnail(videoId) {
   }
 }
 
-module.exports = { getOrCreateThumbnail, checkFfmpegAvailable };
+// 定期清理"孤儿缩略图"：缩略图的缓存文件名是按"视频真实路径 + mtime + size"算出来的哈希
+// （见 getCacheKey），一旦原视频被删除或替换，旧的缓存文件就再也不会被任何请求命中，
+// 但也不会被自动删除，长期运行会让 THUMBNAIL_DIR 只增不减。
+// 这里的做法：重新扫描一遍当前仍然存在的视频，算出它们"现在应该对应哪个缓存文件名"，
+// 和磁盘上实际存在的文件求差集，删掉那些不再对应任何视频的文件。
+async function cleanupOrphanedThumbnails() {
+  let files;
+  try {
+    files = await fs.promises.readdir(THUMBNAIL_DIR);
+  } catch {
+    return;
+  }
+  if (files.length === 0) return;
+
+  let videos;
+  try {
+    videos = scanVideos();
+  } catch {
+    return; // 扫描视频库失败就跳过这次清理，避免在异常情况下误删
+  }
+
+  const validFilenames = new Set();
+  for (const v of videos) {
+    const fullPath = resolveVideoPath(v.id);
+    if (!fullPath) continue;
+    try {
+      const stat = await fs.promises.stat(fullPath);
+      validFilenames.add(getCacheKey(fullPath, stat));
+    } catch {
+      // 视频在扫描之后、这里之前被删除了，跳过即可，不影响清理其它文件
+    }
+  }
+
+  let deletedCount = 0;
+  for (const file of files) {
+    if (file.startsWith('tmp-')) continue; // 正在生成中的临时文件，不要动
+    if (validFilenames.has(file)) continue;
+    try {
+      await fs.promises.unlink(path.join(THUMBNAIL_DIR, file));
+      deletedCount += 1;
+    } catch {
+      // 忽略单个文件删除失败，不影响继续清理其它文件
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`[缩略图清理] 已删除 ${deletedCount} 张对应视频已不存在的孤儿缩略图`);
+  }
+}
+
+module.exports = { getOrCreateThumbnail, checkFfmpegAvailable, cleanupOrphanedThumbnails };
