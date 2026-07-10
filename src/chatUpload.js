@@ -99,7 +99,17 @@ function serveChatImage(req, res) {
     const ext = filename.split('.').pop();
     res.setHeader('Content-Type', EXT_MIME[ext] || 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=86400');
-    fs.createReadStream(fullPath).pipe(res);
+
+    // fs.access 通过之后到真正开始读取之间，文件仍可能被删除或遇到 I/O 错误；
+    // ReadStream 若没有 error 监听器，未捕获的 error 事件会直接让 Node 进程崩溃。
+    // 和 videoStream.js / docDownload.js / imageView.js 保持一致，显式监听 error。
+    const stream = fs.createReadStream(fullPath);
+    stream.on('error', (err) => {
+      console.error('聊天图片读取错误:', err.message);
+      if (!res.headersSent) res.status(500).end();
+      else res.end();
+    });
+    stream.pipe(res);
   });
 }
 
@@ -126,7 +136,14 @@ async function cleanupOldChatImages() {
     try {
       const stat = await fs.promises.stat(fullPath);
       if (!stat.isFile()) continue;
-      if (now - stat.mtimeMs > maxAgeMs) {
+      // 优先用创建时间（birthtime）判断"这张图片是不是该清理了"，而不是修改时间（mtime）——
+      // 上传后的聊天图片理论上不会再被修改，但像 rsync 备份恢复、touch 之类的操作会更新 mtime，
+      // 导致本该清理的旧文件被误判成"新鲜"而豁免。
+      // 但 birthtime 不是所有文件系统都支持：不支持的情况下 Node.js 可能回退成 0（Unix 纪元），
+      // 如果直接信它，会让所有文件都显得"无限久远"，反而导致全部被误删——所以这里做了兜底，
+      // birthtime 明显不可信（<= 0）时退回用 mtime，保持和之前一样的行为。
+      const createdAtMs = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
+      if (now - createdAtMs > maxAgeMs) {
         await fs.promises.unlink(fullPath);
         deletedCount++;
       }

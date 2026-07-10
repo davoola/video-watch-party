@@ -13,6 +13,7 @@ const { streamVideo } = require('./videoStream');
 const { handleChatImageUpload, serveChatImage, cleanupOldChatImages } = require('./chatUpload');
 const { getOrCreateThumbnail, checkFfmpegAvailable, cleanupOrphanedThumbnails } = require('./thumbnail');
 const { downloadDoc } = require('./docDownload');
+const { viewImage } = require('./imageView');
 const { initSocket } = require('./socket');
 
 const app = express();
@@ -115,6 +116,9 @@ app.get('/video-stream/:id', requireAuth, streamVideo);
 
 // ---- 相关附件下载（需要登录）：视频列表页"相关附件"区域用 ----
 app.get('/doc-download/:id', requireAuth, downloadDoc);
+
+// ---- 图片库内嵌查看（需要登录）：视频列表页"图片库"区域的缩略图/lightbox 大图用 ----
+app.get('/image-view/:id', requireAuth, viewImage);
 
 // ---- 聊天图片：上传与访问都需要登录 ----
 app.post('/api/chat-upload', requireAuth, handleChatImageUpload);

@@ -120,14 +120,18 @@ imageInput.addEventListener('change', async () => {
   if (file.size > 5 * 1024 * 1024) { appendSystemMessage('图片不能超过 5MB'); return; }
   const formData = new FormData();
   formData.append('image', file);
-  appendSystemMessage('正在发送图片...');
+  // "正在发送图片..." 只是临时状态提示，不应该和正式聊天记录一样永久留在聊天区里——
+  // 发送成功后要把这条提示删掉（马上会收到 socket 广播回来的正式图片消息），
+  // 失败的话就地把文字换成错误原因，而不是再叠加一条新的系统消息。
+  const statusEl = appendSystemMessage('正在发送图片...');
   try {
     const res = await fetch('/api/chat-upload', { method: 'POST', body: formData });
     const data = await res.json();
-    if (!res.ok) { appendSystemMessage(data.error || '图片发送失败'); return; }
+    if (!res.ok) { statusEl.textContent = data.error || '图片发送失败'; return; }
+    statusEl.remove();
     socket.emit('chat-message', { videoId: CHAT_ROOM_ID, type: 'image', imageUrl: data.url });
   } catch {
-    appendSystemMessage('图片发送失败，请检查网络');
+    statusEl.textContent = '图片发送失败，请检查网络';
   }
 });
 
@@ -146,6 +150,17 @@ function makeAvatar(name, avatarUrl) {
   el.className = 'avatar-initial';
   el.textContent = (name || '?').charAt(0).toUpperCase();
   return el;
+}
+
+// ---- 聊天图片的 lightbox：点开任意一张图，左右/上下键能翻遍"当前聊天记录里的所有图片"
+// （不管是直接发送的图片，还是 Markdown 语法 ![alt](url) 插入的行内图片），不是只能看那一张。
+// 每次点击时都重新从 DOM 里查一遍当前所有图片，而不是维护一个额外的数组去同步，
+// 这样即使消息列表被清空重建（比如切换视频房间），也不会有"数组和 DOM 对不上"的问题。
+function openChatImageLightbox(clickedImg) {
+  const allImages = Array.from(chatMessages.querySelectorAll('img.chat-image, img.md-image'));
+  const items = allImages.map((img) => ({ url: img.src, caption: img.dataset.caption || '' }));
+  const index = allImages.indexOf(clickedImg);
+  Lightbox.open(items, index >= 0 ? index : 0);
 }
 
 // ---- 消息渲染 ----
@@ -177,10 +192,17 @@ function appendChatMessage(data, isSelf) {
     img.className = 'chat-image';
     img.src = data.imageUrl;
     img.alt = '图片消息';
-    img.addEventListener('click', () => window.open(data.imageUrl, '_blank'));
+    img.dataset.caption = data.from ? `来自 ${data.from}` : '';
+    img.addEventListener('click', () => openChatImageLightbox(img));
     bubble.appendChild(img);
   } else {
     bubble.innerHTML = renderMarkdown(data.text);
+    // Markdown 里 ![alt](url) 语法插入的行内图片，也要能点开 lightbox，
+    // 和上面直接发送的图片共用同一套"翻遍所有图片"的逻辑。
+    bubble.querySelectorAll('img.md-image').forEach((img) => {
+      img.dataset.caption = data.from ? `来自 ${data.from}` : '';
+      img.addEventListener('click', () => openChatImageLightbox(img));
+    });
   }
 
   div.appendChild(bubble);
@@ -194,6 +216,7 @@ function appendSystemMessage(text) {
   div.textContent = text;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  return div;
 }
 
 function appendHistoryDivider() {

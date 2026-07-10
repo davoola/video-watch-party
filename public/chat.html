@@ -33,8 +33,17 @@
     </div>
   </div>
 
+  <div class="lightbox" id="lightbox" hidden>
+    <button class="lightbox-close" id="lightboxClose" type="button" aria-label="关闭">✕</button>
+    <button class="lightbox-nav lightbox-prev" id="lightboxPrev" type="button" aria-label="上一张">‹</button>
+    <img class="lightbox-image" id="lightboxImage" alt="">
+    <button class="lightbox-nav lightbox-next" id="lightboxNext" type="button" aria-label="下一张">›</button>
+    <div class="lightbox-caption" id="lightboxCaption"></div>
+  </div>
+
   <script src="/js/siteConfig.js"></script>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/lightbox.js"></script>
   <script src="/js/markdown.js"></script>
   <script src="/js/chat.js"></script>
 </body>

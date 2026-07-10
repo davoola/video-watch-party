@@ -4,6 +4,7 @@
 // 另外维护一个"大厅"概念：所有已登录的 socket 连接（无论是在视频列表页还是播放页）
 // 都会被记录当前位置，广播给所有人，这样在列表页也能看到"对方正在看哪个视频"。
 
+const fs = require('fs');
 const path = require('path');
 const { isValidChatImageFilename } = require('./chatUpload');
 const { resolveVideoPath } = require('./videoScanner');
@@ -57,8 +58,12 @@ function initSocket(io) {
   // 只有当一个用户在某个房间里的所有连接都断开时，才真正判定为"离开"。
   const roomMembers = new Map();
   const roomHistory = new Map(); // roomName -> 最近的聊天消息数组（环形缓冲，最多 CHAT_HISTORY_MAX 条）
-  // roomName -> { action, time, updatedAt }：记录房间最近一次的播放状态（播放/暂停/进度），
+  // roomName -> { playState, time, updatedAt }：记录房间最近一次的播放状态（播放/暂停/进度），
   // 这样两人都断线重连后，新加入的连接会先被同步到"大家上次看到哪"，而不是永远从头开始。
+  // playState 只可能是 'play' 或 'pause'，专门用来记录"当前是播放中还是暂停中"——不能直接
+  // 存最后一次 video-action 的 action 字段，因为那个字段可能是 'seek' 或 'heartbeat'，这两种
+  // action 都不携带播放/暂停意图，如果重连同步时原样转发，接收端不会据此改变播放/暂停状态
+  // （见 player.js 的 willPlay/willPause 判断），会导致重连的一方卡在错误的播放/暂停状态上。
   // 注意这仍然只存在内存里，服务进程重启后会丢失——如果需要跨重启保留，可以在这里
   // 加一个定期写入磁盘/数据库的持久化层。
   const roomState = new Map();
@@ -75,10 +80,39 @@ function initSocket(io) {
   // 这里自己维护一份 socket.id -> 房间名 的映射，在 disconnect 时查这份映射。
   const socketCurrentRoom = new Map();
 
-  // 大厅状态：username -> { videoId, videoName } | null（null 表示在列表页/空闲）
-  const userLocations = new Map();
+  // 大厅状态：之前 userLocations 是"用户级别"的单一值（username -> location），
+  // 但 join-room/enter-lobby 是"每个 socket 各自触发"的——同一个用户开两个标签页
+  // （比如 Tab1 在看视频、Tab2 进了独立聊天室），后动的那个标签页会把前一个标签页的
+  // 位置整个覆盖掉；而这个"后动的"标签页关闭时，disconnect 里只有当这个用户所有
+  // 连接都断开才会清空位置，所以 Tab1 明明还在看视频，大厅却会一直显示"在聊天室"，
+  // 直到 Tab1 自己再触发一次 join-room 才会纠正过来。
+  //
+  // 改成每个 socket 各自记录自己的位置和最后活跃时间，展示给大厅看的位置是"这个用户
+  // 当前仍在线的所有连接里，最近一次更新过位置的那一个"——这样关掉不活跃的标签页
+  // 不会影响正在使用的那个标签页的展示，语义上更符合直觉。
+  const socketLocations = new Map(); // socket.id -> { location, updatedAt }
   // username -> Set(socket.id)，用于判断该用户是否还有其他连接在线（比如开了两个标签页）
   const userSockets = new Map();
+
+  function setSocketLocation(socket, location) {
+    socketLocations.set(socket.id, { location, updatedAt: Date.now() });
+  }
+
+  // 取某个用户"当前应该展示的位置"：在其所有仍然在线的连接里，挑最近一次更新过位置的那个。
+  // 一个连接都没有、或者一个都没设置过位置时，返回 null（表示不在线/空闲）。
+  function getUserDisplayLocation(username) {
+    const sockets = userSockets.get(username);
+    if (!sockets || sockets.size === 0) return null;
+
+    let latest = null;
+    for (const sid of sockets) {
+      const entry = socketLocations.get(sid);
+      if (entry && (!latest || entry.updatedAt > latest.updatedAt)) {
+        latest = entry;
+      }
+    }
+    return latest ? latest.location : null;
+  }
 
   // 限流：聊天消息最多 10 条 / 5 秒；播放控制事件（含心跳）最多 30 个 / 5 秒。
   // 这两个上限都明显高于正常人类操作的速率，只会拦住失控脚本或异常重连风暴。
@@ -149,7 +183,7 @@ function initSocket(io) {
     const users = Array.from(userSockets.keys()).map((username) => ({
       username,
       online: userSockets.get(username).size > 0,
-      location: userLocations.get(username) || null,
+      location: getUserDisplayLocation(username),
     }));
     io.to(LOBBY_ROOM).emit('lobby-presence', { users });
   }
@@ -162,17 +196,17 @@ function initSocket(io) {
 
     if (!userSockets.has(username)) userSockets.set(username, new Set());
     userSockets.get(username).add(socket.id);
-    if (!userLocations.has(username)) userLocations.set(username, null);
+    setSocketLocation(socket, null); // 新连接刚建立时默认"空闲"，等它发 join-room/enter-lobby 再更新
 
     broadcastLobby();
 
     // 客户端在视频列表页时会发这个事件，表明"我现在没在看任何视频"
     socket.on('enter-lobby', () => {
-      userLocations.set(username, null);
+      setSocketLocation(socket, null);
       broadcastLobby();
     });
 
-    socket.on('join-room', ({ videoId }) => {
+    socket.on('join-room', async ({ videoId }) => {
       if (!videoId || typeof videoId !== 'string') return;
 
       let videoName;
@@ -184,10 +218,26 @@ function initSocket(io) {
         // userLocations 再广播给所有人，恶意客户端可以随意伪造文字显示在对方的
         // "对方正在观看"提示里。这里改成用 videoId 反查真实的视频文件名，
         // 查不到（视频不存在或无权访问）就直接忽略这次 join-room。
+        //
+        // resolveVideoPath 只做路径/扩展名校验，不做磁盘 I/O（原因见 videoScanner.js
+        // 里 resolveSafePath 的注释），所以这里要自己异步 stat 一次确认文件真实存在。
         const videoFullPath = resolveVideoPath(videoId);
         if (!videoFullPath) return;
+        try {
+          const stat = await fs.promises.stat(videoFullPath);
+          if (!stat.isFile()) return;
+        } catch {
+          return; // 视频不存在（比如已被删除），忽略这次 join-room
+        }
         videoName = path.basename(videoFullPath);
       }
+
+      // 上面的 await（fs.promises.stat）会让出事件循环：如果客户端在此期间断线，
+      // disconnect 处理器会先跑一遍（此时 socketCurrentRoom 里还没有这个 socket 的
+      // 记录，无事可清），随后这里的 await 才恢复执行。如果不做这个检查，就会对一个
+      // 已断开的 socket 继续执行 join/addMember/socketCurrentRoom.set，产生一个永远
+      // 不会被清理的"幽灵成员"（disconnect 事件已经触发过，不会再触发第二次）。
+      if (!socket.connected) return;
 
       const room = ROOM_PREFIX + videoId;
 
@@ -227,17 +277,17 @@ function initSocket(io) {
       // 把房间最近一次的播放状态（播放/暂停/进度）同步给刚加入的这一个连接，
       // 这样两人都断线重连后，不用再从头开始，会自动跳到大家上次看到的位置。
       const savedState = roomState.get(room);
-      if (savedState) {
+      if (savedState && savedState.playState) {
         socket.emit('video-action', {
-          action: savedState.action,
+          action: savedState.playState, // 'play' 或 'pause'，明确携带播放意图，而不是原样转发 seek/heartbeat
           time: savedState.time,
           from: null,
           ts: Date.now(),
         });
       }
 
-      // 更新大厅位置信息，让列表页也能看到"正在观看 XXX"
-      userLocations.set(username, { videoId, videoName });
+      // 更新大厅位置信息，让列表页也能看到"正在观看 XXX"（只更新这一个 socket 自己的位置）
+      setSocketLocation(socket, { videoId, videoName });
       broadcastLobby();
     });
 
@@ -254,7 +304,11 @@ function initSocket(io) {
       // 否则任何知道 videoId 的客户端都能伪造播放/暂停/跳进度广播给房间里的人。
       if (socketCurrentRoom.get(socket.id) !== room) return;
 
-      roomState.set(room, { action, time, updatedAt: Date.now() });
+      // playState 只在收到明确的 play/pause 时更新；seek/heartbeat 不改变"当前是播放还是暂停"，
+      // 只更新进度 time，这样重连同步时才能emit 出正确的播放/暂停意图（见上面 roomState 的注释）。
+      const prevPlayState = roomState.get(room)?.playState;
+      const playState = action === 'play' || action === 'pause' ? action : prevPlayState;
+      roomState.set(room, { playState, time, updatedAt: Date.now() });
       socket.to(room).emit('video-action', { action, time, from: username, ts: Date.now() });
     });
 
@@ -326,10 +380,8 @@ function initSocket(io) {
       const sockets = userSockets.get(username);
       if (sockets) {
         sockets.delete(socket.id);
-        if (sockets.size === 0) {
-          userLocations.set(username, null);
-        }
       }
+      socketLocations.delete(socket.id); // 这个连接本身没了，它的位置记录也跟着清掉
       broadcastLobby();
     });
   });

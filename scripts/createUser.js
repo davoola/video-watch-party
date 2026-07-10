@@ -31,8 +31,17 @@ function loadUsers() {
   return normalized;
 }
 
+// 写 users.json 时用"先写临时文件、再重命名"的方式做原子写入，而不是直接 writeFileSync
+// 目标文件。直接写目标文件的话，如果这个脚本运行的同时，正在跑的服务恰好也在读这个文件
+// （比如某个人正在登录），理论上有极小概率读到"写了一半"的内容，导致 JSON.parse 失败
+// （服务端 loadUsers() 的 catch 会把这种情况当成"没有任何用户"，表现为所有人一时登录不了）。
+// 同目录下的 rename 在几乎所有文件系统上都是原子操作，要么读到写之前的完整旧内容，
+// 要么读到写完之后的完整新内容，不会读到中间状态。
 function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2) + '\n', 'utf-8');
+  const content = JSON.stringify(users, null, 2) + '\n';
+  const tmpFile = `${USERS_FILE}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmpFile, content, 'utf-8');
+  fs.renameSync(tmpFile, USERS_FILE);
 }
 
 function ask(rl, question, hidden = false) {

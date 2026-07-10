@@ -6,11 +6,14 @@ const breadcrumbEl = document.getElementById('breadcrumb');
 const brandLogo = document.getElementById('brandLogo');
 const attachmentsEl = document.getElementById('attachments');
 const attachmentsListEl = document.getElementById('attachmentsList');
+const galleryEl = document.getElementById('gallery');
+const galleryGridEl = document.getElementById('galleryGrid');
 
 brandLogo.addEventListener('error', () => { brandLogo.style.display = 'none'; });
 
 let myUsername = '';
 let currentDir = ''; // 当前目录，'' = 根目录
+let galleryImages = []; // 当前目录图片库列表（lightbox 翻页要用到）
 
 function formatSize(bytes) {
   if (!bytes) return '未知大小';
@@ -57,6 +60,7 @@ async function browseDir(dir) {
   renderBreadcrumb(dir);
   contentEl.innerHTML = '<div class="empty-state">加载中…</div>';
   attachmentsEl.hidden = true; // 切换目录时先隐藏，等新目录的附件查询结果回来再决定是否显示
+  galleryEl.hidden = true; // 图片库同理，先隐藏，等新目录的查询结果回来再决定是否显示
   try {
     const qs = dir ? '?dir=' + encodeURIComponent(dir) : '';
     const res = await fetch('/api/browse' + qs);
@@ -66,6 +70,7 @@ async function browseDir(dir) {
   } catch {
     contentEl.innerHTML = '<div class="empty-state">加载目录失败，请刷新重试</div>';
   }
+  loadGallery(dir);
   loadAttachments(dir);
 }
 
@@ -116,6 +121,66 @@ function renderDirContents(dirs, videos) {
 
   contentEl.innerHTML = '';
   contentEl.appendChild(grid);
+}
+
+// ---- 图片库（当前浏览目录下的图片，最多 8 张）----
+// 请求"当前目录"的图片列表；用 requestDir 记录发起请求时的目录，逻辑和 loadAttachments 一样：
+// 结果回来时如果用户已经切换到别的目录了，就丢弃这次结果，避免图片库显示错目录的内容。
+async function loadGallery(requestDir) {
+  try {
+    const qs = requestDir ? '?dir=' + encodeURIComponent(requestDir) : '';
+    const res = await fetch('/api/dir-images' + qs);
+    if (res.status === 401) { window.location.href = '/login.html'; return; }
+    if (!res.ok) return;
+    const data = await res.json();
+    if (requestDir !== currentDir) return; // 目录已经切换，结果过期，丢弃
+    renderGallery(data.images || []);
+  } catch {
+    // 图片库加载失败不影响正常看视频列表，静默忽略即可
+  }
+}
+
+function renderGallery(images) {
+  // 全量列表存起来给 lightbox 用（左右/上下键要能翻完这个目录下的所有图片，
+  // 不只是首页展示出来的这 8 张），首页缩略图只画前 8 张。
+  galleryImages = images;
+
+  if (!images.length) {
+    galleryEl.hidden = true;
+    galleryGridEl.innerHTML = '';
+    return;
+  }
+
+  const thumbnails = images.slice(0, 8);
+
+  galleryGridEl.innerHTML = '';
+  thumbnails.forEach((img, index) => {
+    // 复用 .video-card / .thumb 的结构和尺寸，保证图片卡片和视频卡片大小完全一致；
+    // 图片本身就是内容，不需要 .thumb-img 那套"异步生成缩略图"的淡入/兜底逻辑。
+    const card = document.createElement('div');
+    card.className = 'video-card gallery-card';
+    card.innerHTML = `
+      <div class="thumb">
+        <img class="gallery-thumb-img" src="${escapeAttr(img.url)}" alt="" loading="lazy">
+      </div>
+      <div class="name">${escapeHtml(img.name)}</div>
+      <div class="meta">${formatSize(img.sizeBytes)}</div>
+    `;
+    // index 是"缩略图在 thumbnails 里的下标"，因为 thumbnails 是 images 的前 8 项，
+    // 所以这个下标在完整的 galleryImages 数组里也是同一个位置，可以直接用来打开 lightbox。
+    card.addEventListener('click', () => openGalleryLightbox(index));
+    galleryGridEl.appendChild(card);
+  });
+
+  galleryEl.hidden = false;
+}
+
+// 图片库的 lightbox 交互（开关/翻页/键盘）统一由 public/js/lightbox.js 里的
+// 通用 Lightbox 组件负责，这里只需要把"这个目录下的全部图片"转换成它要的格式传进去，
+// 这样左右/上下键翻的就是完整列表，不受首页只展示 8 张缩略图的限制。
+function openGalleryLightbox(startIndex) {
+  const items = galleryImages.map((img) => ({ url: img.url, caption: img.name }));
+  Lightbox.open(items, startIndex);
 }
 
 // ---- 相关附件（当前浏览目录下的 docx/xlsx/pptx/pdf/md/txt/压缩包等） ----

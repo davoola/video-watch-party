@@ -32,7 +32,35 @@ videoNameText.textContent = videoName;
 videoEl.src = `/video-stream/${encodeURIComponent(videoId)}`;
 
 let myUsername = '';
-let isRemoteAction = false; // true 时表示当前事件是远程指令触发的，不要再广播出去
+// 远端指令触发本地播放器变化时，本地的 play/pause/seeked 监听器不应该把这次变化
+// 当成"用户自己操作的"再广播回去，否则会来回"回声"。
+// 之前用一个简单的布尔值 + 固定 200ms 超时来做这件事，但 videoEl.play() 是异步的，
+// seeked 事件也是异步的，在设备/网络较慢时，这些事件可能在 200ms 之后才触发——
+// 此时标记已经被提前重置成了 false，导致远端来的变化被误判成本地操作，又广播回去，
+// 造成短暂的"你纠正我、我又纠正你"式抖动。
+// 改成一个计数器：处理远端指令时，先算好"接下来会有几个本地事件是这次指令必然导致的"
+// （比如同时要 seek 又要切换播放/暂停状态，就是 2 个），登记这个数量；
+// 每次 play/pause/seeked 事件触发时，如果还有"待认领"的名额，就消耗掉一个、不广播，
+// 没有名额了才说明是用户自己的操作，正常广播。1500ms 兜底超时防止极端情况下
+// （比如 play() 被静默拒绝导致 play 事件永远不会来）计数器卡住不清零。
+let remoteActionPending = 0;
+let remoteActionTimeout = null;
+
+function expectRemoteEvents(count) {
+  remoteActionPending += count;
+  clearTimeout(remoteActionTimeout);
+  remoteActionTimeout = setTimeout(() => { remoteActionPending = 0; }, 1500);
+}
+
+function consumeRemoteEvent() {
+  if (remoteActionPending > 0) {
+    remoteActionPending -= 1;
+    return true; // 这个事件是远端指令导致的，本地不应该再广播出去
+  }
+  return false;
+}
+
+let hasOthersInRoom = false; // 房间里是否还有除自己以外的人在——没人时心跳没有意义，可以省掉
 
 // 同步容忍度按事件类型区分：
 // - play/pause/seek 是用户主动操作，希望对方尽快精确跟随，容忍度小一点
@@ -71,6 +99,7 @@ socket.on('connect_error', (err) => {
 
 socket.on('room-presence', ({ members }) => {
   const others = members.filter((m) => m !== myUsername);
+  hasOthersInRoom = others.length > 0;
   presenceText.textContent = others.length > 0 ? `${others.join(', ')} 也在房间里` : '等待对方加入...';
 });
 
@@ -100,40 +129,49 @@ socket.on('chat-message', (data) => {
 
 // ==================== 播放同步 ====================
 socket.on('video-action', ({ action, time }) => {
-  isRemoteAction = true;
-
   const tolerance = action === 'heartbeat' ? SYNC_TOLERANCE_HEARTBEAT : SYNC_TOLERANCE_ACTION;
   const diff = Math.abs(videoEl.currentTime - time);
-  if (diff > tolerance) videoEl.currentTime = time;
+  const willSeek = diff > tolerance;
+  const willPlay = action === 'play' && videoEl.paused;
+  const willPause = action === 'pause' && !videoEl.paused;
+
+  // 只登记"这次指令实际会导致发生"的本地事件数量——如果心跳时进度差在容忍范围内、
+  // 且播放/暂停状态本来就一致，这次远端指令不会让播放器发生任何变化，也就不需要
+  // 等待任何事件来"认领"，避免计数器卡在大于 0 的状态、误伤后续真正的本地操作。
+  const expectedCount = (willSeek ? 1 : 0) + (willPlay || willPause ? 1 : 0);
+  if (expectedCount > 0) expectRemoteEvents(expectedCount);
+
+  if (willSeek) videoEl.currentTime = time;
 
   if (action === 'play') {
     videoEl.play().catch(() => {
       appendSystemMessage('浏览器阻止了自动播放，请手动点击播放按钮以同步');
+      // play() 被拒绝就不会有 play 事件触发来"认领"这个名额，手动扣掉，避免计数器卡住
+      if (willPlay) remoteActionPending = Math.max(0, remoteActionPending - 1);
     });
   } else if (action === 'pause') {
     videoEl.pause();
   }
-
-  setTimeout(() => { isRemoteAction = false; }, 200);
 });
 
 videoEl.addEventListener('play', () => {
-  if (isRemoteAction) return;
+  if (consumeRemoteEvent()) return;
   socket.emit('video-action', { videoId, action: 'play', time: videoEl.currentTime });
 });
 
 videoEl.addEventListener('pause', () => {
-  if (isRemoteAction) return;
+  if (consumeRemoteEvent()) return;
   socket.emit('video-action', { videoId, action: 'pause', time: videoEl.currentTime });
 });
 
 videoEl.addEventListener('seeked', () => {
-  if (isRemoteAction) return;
+  if (consumeRemoteEvent()) return;
   socket.emit('video-action', { videoId, action: 'seek', time: videoEl.currentTime });
 });
 
 setInterval(() => {
   if (videoEl.paused || videoEl.seeking) return;
+  if (!hasOthersInRoom) return; // 房间里没有其他人时，心跳没有"纠正对方漂移"的意义，省掉这次心跳
   socket.emit('video-action', { videoId, action: 'heartbeat', time: videoEl.currentTime });
 }, HEARTBEAT_INTERVAL);
 
@@ -190,6 +228,17 @@ function makeAvatar(name, avatarUrl) {
   return el;
 }
 
+// ---- 聊天图片的 lightbox：点开任意一张图，左右/上下键能翻遍"当前聊天记录里的所有图片"
+// （不管是直接发送的图片，还是 Markdown 语法 ![alt](url) 插入的行内图片），不是只能看那一张。
+// 每次点击时都重新从 DOM 里查一遍当前所有图片，而不是维护一个额外的数组去同步，
+// 这样即使消息列表被清空重建（比如切换视频房间），也不会有"数组和 DOM 对不上"的问题。
+function openChatImageLightbox(clickedImg) {
+  const allImages = Array.from(chatMessages.querySelectorAll('img.chat-image, img.md-image'));
+  const items = allImages.map((img) => ({ url: img.src, caption: img.dataset.caption || '' }));
+  const index = allImages.indexOf(clickedImg);
+  Lightbox.open(items, index >= 0 ? index : 0);
+}
+
 // ==================== 消息渲染 ====================
 function appendChatMessage(data, isSelf) {
   const div = document.createElement('div');
@@ -219,10 +268,17 @@ function appendChatMessage(data, isSelf) {
     img.className = 'chat-image';
     img.src = data.imageUrl;
     img.alt = '图片消息';
-    img.addEventListener('click', () => window.open(data.imageUrl, '_blank'));
+    img.dataset.caption = data.from ? `来自 ${data.from}` : '';
+    img.addEventListener('click', () => openChatImageLightbox(img));
     bubble.appendChild(img);
   } else {
     bubble.innerHTML = renderMarkdown(data.text);
+    // Markdown 里 ![alt](url) 语法插入的行内图片，也要能点开 lightbox，
+    // 和上面直接发送的图片共用同一套"翻遍所有图片"的逻辑。
+    bubble.querySelectorAll('img.md-image').forEach((img) => {
+      img.dataset.caption = data.from ? `来自 ${data.from}` : '';
+      img.addEventListener('click', () => openChatImageLightbox(img));
+    });
   }
 
   div.appendChild(bubble);
@@ -236,6 +292,7 @@ function appendSystemMessage(text) {
   div.textContent = text;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  return div;
 }
 
 function appendHistoryDivider() {
@@ -351,20 +408,24 @@ imageInput.addEventListener('change', async () => {
   const formData = new FormData();
   formData.append('image', file);
 
-  appendSystemMessage('正在发送图片...');
+  // "正在发送图片..." 只是临时状态提示，不应该和正式聊天记录一样永久留在聊天区里——
+  // 发送成功后要把这条提示删掉（马上会收到 socket 广播回来的正式图片消息），
+  // 失败的话就地把文字换成错误原因，而不是再叠加一条新的系统消息。
+  const statusEl = appendSystemMessage('正在发送图片...');
 
   try {
     const res = await fetch('/api/chat-upload', { method: 'POST', body: formData });
     const data = await res.json();
 
     if (!res.ok) {
-      appendSystemMessage(data.error || '图片发送失败');
+      statusEl.textContent = data.error || '图片发送失败';
       return;
     }
 
+    statusEl.remove();
     socket.emit('chat-message', { videoId, type: 'image', imageUrl: data.url });
   } catch (err) {
-    appendSystemMessage('图片发送失败，请检查网络');
+    statusEl.textContent = '图片发送失败，请检查网络';
   }
 });
 

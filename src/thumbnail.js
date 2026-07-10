@@ -14,6 +14,16 @@ const { resolveVideoPath, scanVideos } = require('./videoScanner');
 let ffmpegAvailable = null; // null = 还没检测过；true/false = 检测结果缓存
 let ffmpegCheckPromise = null;
 
+// fs.existsSync 的异步版本：用 access 探测文件是否存在，不阻塞事件循环。
+async function pathExists(p) {
+  try {
+    await fs.promises.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function checkFfmpegAvailable() {
   if (ffmpegCheckPromise) return ffmpegCheckPromise;
 
@@ -109,7 +119,7 @@ async function getOrCreateThumbnail(videoId) {
   const cacheKey = getCacheKey(fullPath, stat);
   const cachePath = path.join(THUMBNAIL_DIR, cacheKey);
 
-  if (fs.existsSync(cachePath)) {
+  if (await pathExists(cachePath)) {
     return cachePath;
   }
 
@@ -118,7 +128,7 @@ async function getOrCreateThumbnail(videoId) {
   if (inflightGenerations.has(cacheKey)) {
     try {
       await inflightGenerations.get(cacheKey);
-      return fs.existsSync(cachePath) ? cachePath : null;
+      return (await pathExists(cachePath)) ? cachePath : null;
     } catch {
       return null;
     }
@@ -162,7 +172,7 @@ async function cleanupOrphanedThumbnails() {
 
   let videos;
   try {
-    videos = scanVideos();
+    videos = await scanVideos();
   } catch {
     return; // 扫描视频库失败就跳过这次清理，避免在异常情况下误删
   }
