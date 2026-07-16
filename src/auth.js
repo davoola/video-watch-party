@@ -85,6 +85,14 @@ router.post('/api/login', async (req, res) => {
     return res.status(400).json({ error: '请输入用户名和密码' });
   }
 
+  // 超长 username 会被拼进限流用的 Map key（ip:username），理论上可以让这个 Map
+  // 无限增长；超长 password 交给 bcrypt.compare() 也是没必要的开销（bcrypt 本身
+  // 只认前 72 字节，多余部分纯属浪费）。合法用户名/密码不可能长到这个地步，
+  // 这里在真正开始鉴权逻辑之前就拦掉，成本最低。
+  if (username.length > 100 || password.length > 200) {
+    return res.status(400).json({ error: '输入超出允许长度' });
+  }
+
   if (isLocked(req, username)) {
     return res.status(429).json({ error: '尝试次数过多，请 15 分钟后再试' });
   }

@@ -10,7 +10,13 @@ config.validateConfig();
 const { router: authRouter, requireAuth, requireAuthPage } = require('./auth');
 const videoApiRouter = require('./videoApi');
 const { streamVideo } = require('./videoStream');
-const { handleChatImageUpload, serveChatImage, cleanupOldChatImages } = require('./chatUpload');
+const {
+  handleChatImageUpload,
+  serveChatImage,
+  handleChatVoiceUpload,
+  serveChatVoice,
+  cleanupOldChatUploads,
+} = require('./chatUpload');
 const { getOrCreateThumbnail, checkFfmpegAvailable, cleanupOrphanedThumbnails } = require('./thumbnail');
 const { downloadDoc } = require('./docDownload');
 const { viewImage } = require('./imageView');
@@ -40,12 +46,14 @@ const sessionMiddleware = session({
   secret: config.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
+  rolling: true, // 每次请求都刷新 cookie 的过期时间，而不是从登录那一刻起算固定 12 小时；
+                 // 否则两人看长片/长时间聊天，中途会被强制退出登录、房间状态要重新同步。
   name: 'vwp.sid', // 不用默认的 connect.sid，减少信息暴露
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
     secure: 'auto',
-    maxAge: 1000 * 60 * 60 * 12, // 12 小时
+    maxAge: 1000 * 60 * 60 * 12, // 12 小时不活动后过期（配合 rolling: true，只要还有请求就会续期）
   },
 });
 
@@ -123,6 +131,8 @@ app.get('/image-view/:id', requireAuth, viewImage);
 // ---- 聊天图片：上传与访问都需要登录 ----
 app.post('/api/chat-upload', requireAuth, handleChatImageUpload);
 app.get('/chat-image/:filename', requireAuth, serveChatImage);
+app.post('/api/chat-voice-upload', requireAuth, handleChatVoiceUpload);
+app.get('/chat-voice/:filename', requireAuth, serveChatVoice);
 
 // ---- 视频缩略图：懒加载生成，失败/不可用时返回 404，前端会自动退回默认图标 ----
 app.get('/video-thumbnail/:id', requireAuth, async (req, res) => {
@@ -191,9 +201,9 @@ server.listen(config.PORT, () => {
   checkFfmpegAvailable(); // 提前检测一次并打印日志，结果会被缓存，不阻塞服务启动
 
   // 聊天图片清理：启动时先跑一次，之后每 24 小时跑一次。
-  // CHAT_IMAGE_RETENTION_DAYS 设为 0 时，cleanupOldChatImages 内部会直接跳过，不做任何删除。
-  cleanupOldChatImages();
-  setInterval(cleanupOldChatImages, 24 * 60 * 60 * 1000).unref();
+  // CHAT_IMAGE_RETENTION_DAYS 设为 0 时，cleanupOldChatUploads 内部会直接跳过，不做任何删除。
+  cleanupOldChatUploads();
+  setInterval(cleanupOldChatUploads, 24 * 60 * 60 * 1000).unref();
 
   // 孤儿缩略图清理：原视频被删除/替换后，旧的缩略图缓存文件不会自动消失，
   // 同样是启动时先跑一次，之后每 24 小时跑一次。

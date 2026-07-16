@@ -6,8 +6,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { isValidChatImageFilename } = require('./chatUpload');
+const { isValidChatImageFilename, isValidChatVoiceFilename } = require('./chatUpload');
 const { resolveVideoPath } = require('./videoScanner');
+const { CHAT_IMAGE_RETENTION_DAYS } = require('./config');
 
 const ROOM_PREFIX = 'video:';
 const LOBBY_ROOM = 'lobby';
@@ -20,7 +21,7 @@ const LOBBY_ROOM = 'lobby';
 const CHAT_LOBBY_ROOM_ID = '__lobby_chat__';
 const CHAT_LOBBY_ROOM_NAME = '聊天室';
 
-const CHAT_HISTORY_MAX = 50; // 每个房间最多保留多少条聊天记录（内存里，重启会清空）
+const CHAT_HISTORY_MAX = 100; // 每个房间最多保留多少条聊天记录（内存里，重启会清空）
 
 // ---- 简单的滑动窗口限流器：用于聊天消息和播放控制事件，防止脚本刷屏/恶意消耗 ----
 // 返回的函数 isAllowed(key) 在限流范围内返回 true，超出范围返回 false。
@@ -179,6 +180,33 @@ function initSocket(io) {
     roomHistory.set(room, history);
   }
 
+  // roomHistory 只存在内存里、和聊天图片/语音的磁盘文件是两套独立的生命周期：
+  // chatUpload.js 里的 cleanupOldChatUploads() 按 CHAT_IMAGE_RETENTION_DAYS 天数
+  // 定期删磁盘文件，但不会同步去 roomHistory 里摘掉对应的消息——如果一个房间足够
+  // "长寿"（超过保留天数一直没清空过，两人一直用同一个视频房间/聊天室），历史记录里
+  // 就会留着指向已经被删掉的文件的图片/语音消息，新加入（或断线重连）的一方看到的
+  // 会是加载失败的图片/转不动的语音，一头雾水。这里在"发送历史记录给新连接"这一步
+  // 做一次过滤：按发送时间判断这条消息引用的文件是否已经过了保留期，如果是，
+  // 换成一条纯文本提示，不再带 imageUrl/audioUrl（前端按 type: 'text' 正常渲染）。
+  // 只需要比较时间戳、不需要真的去磁盘查文件是否存在，join-room 这种高频路径上
+  // 不会因为这个引入额外的文件系统调用。
+  function filterStaleMedia(history) {
+    if (!CHAT_IMAGE_RETENTION_DAYS || CHAT_IMAGE_RETENTION_DAYS <= 0) return history; // 没开自动清理，文件不会过期，不用过滤
+    const maxAgeMs = CHAT_IMAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    return history.map((msg) => {
+      if ((msg.type !== 'image' && msg.type !== 'voice') || !msg.ts) return msg;
+      if (now - msg.ts <= maxAgeMs) return msg;
+      return {
+        from: msg.from,
+        avatar: msg.avatar,
+        type: 'text',
+        text: msg.type === 'image' ? '[图片已过期，文件已被自动清理]' : '[语音已过期，文件已被自动清理]',
+        ts: msg.ts,
+      };
+    });
+  }
+
   function broadcastLobby() {
     const users = Array.from(userSockets.keys()).map((username) => ({
       username,
@@ -269,7 +297,7 @@ function initSocket(io) {
       });
 
       // 把这个房间最近的聊天记录发给刚加入的这一个连接（不广播给其他人，他们早就看过了）
-      const history = roomHistory.get(room) || [];
+      const history = filterStaleMedia(roomHistory.get(room) || []);
       if (history.length > 0) {
         socket.emit('chat-history', { messages: history });
       }
@@ -293,7 +321,12 @@ function initSocket(io) {
 
     // 播放控制：play / pause / seek / heartbeat
     socket.on('video-action', (data) => {
-      if (!actionRateAllowed(username)) return; // 超出限流静默丢弃，不打扰用户
+      // 按 socket.id（也就是每个连接/标签页独立）限流，而不是按 username——同一个人
+      // 开两个标签页（一个在看视频、一个在浏览库），或者只是单纯又开了一个视频房间，
+      // 之前按 username 算的话，这些连接会共用同一份限流额度，正常操作也可能被
+      // 误伤（比如两个标签页都在心跳 + 其中一个又在拖进度条）。两人私用场景下，
+      // 按连接限流已经足够防止脚本刷屏/恶意消耗，不需要更严格的跨连接合并统计。
+      if (!actionRateAllowed(socket.id)) return; // 超出限流静默丢弃，不打扰用户
 
       const { videoId, action, time } = data || {};
       if (!videoId || !['play', 'pause', 'seek', 'heartbeat'].includes(action)) return;
@@ -312,9 +345,10 @@ function initSocket(io) {
       socket.to(room).emit('video-action', { action, time, from: username, ts: Date.now() });
     });
 
-    // 聊天消息：支持文本（含 Markdown 原文）和图片两种类型
+    // 聊天消息：支持文本（含 Markdown 原文）、图片、语音三种类型
     socket.on('chat-message', (data) => {
-      if (!chatRateAllowed(username)) return; // 超出限流静默丢弃，不打扰用户
+      // 和 video-action 一样，按 socket.id 而不是 username 限流，理由见上面的注释
+      if (!chatRateAllowed(socket.id)) return; // 超出限流静默丢弃，不打扰用户
 
       const { videoId, type } = data || {};
       if (!videoId || typeof videoId !== 'string') return;
@@ -336,6 +370,29 @@ function initSocket(io) {
           avatar,
           type: 'image',
           imageUrl: `/chat-image/${filename}`,
+          ts: Date.now(),
+        };
+        io.to(room).emit('chat-message', msg);
+        pushHistory(room, msg);
+        return;
+      }
+
+      if (type === 'voice') {
+        const { audioUrl, durationSec } = data;
+        // 和图片一样，再次校验语音 URL 格式，防止客户端伪造任意路径广播给对方
+        const filename = typeof audioUrl === 'string' ? audioUrl.split('/').pop() : '';
+        if (!isValidChatVoiceFilename(filename)) return;
+
+        // durationSec 只用于聊天气泡里显示"时长"这个提示文字，不是安全边界，
+        // 这里做个宽松的合理性夹取（0～120 秒），防止客户端传入负数/超大数字/非数字把界面显示搞乱。
+        const safeDuration = Number.isFinite(durationSec) ? Math.min(Math.max(Math.round(durationSec), 0), 120) : 0;
+
+        const msg = {
+          from: username,
+          avatar,
+          type: 'voice',
+          audioUrl: `/chat-voice/${filename}`,
+          durationSec: safeDuration,
           ts: Date.now(),
         };
         io.to(room).emit('chat-message', msg);

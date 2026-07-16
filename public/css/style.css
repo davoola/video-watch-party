@@ -206,6 +206,200 @@ button {
   }
 }
 
+/* ---- Markdown 在线阅读弹层：点击"相关附件"里 .md 文件的"阅读"按钮时打开 ----
+   结构上和 lightbox 是同一种"全屏遮罩 + 居中内容"套路，但这里是一个带滚动条的
+   长文阅读框，而不是一张图，所以另起一套样式，不复用 .lightbox 本身的规则。
+   内部渲染用的是 .msg .bubble 那一整套 Markdown 排版 CSS（见"聊天公共组件"一节），
+   这里只负责外层的浮层容器。 */
+.md-reader {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  box-sizing: border-box;
+}
+
+.md-reader[hidden] {
+  display: none;
+}
+
+.md-reader-box {
+  background: #1c1e24;
+  border: 1px solid #2c3038;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.md-reader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #2c3038;
+  flex-shrink: 0;
+}
+
+.md-reader-title {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  color: #ffffcc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Kaiti SC", "STKaiti", "DFKai-SB", "KaiTi", serif;
+  font-weight: 500;
+  position: relative;
+  padding-bottom: 8px; 
+}
+
+.md-reader-title::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);  
+  width: 220px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(to right, rgba(255, 60, 60, 0), rgba(255, 40, 40, 1) 50%, rgba(255, 60, 60, 0));
+  box-shadow: 0 0 6px rgba(255, 40, 40, 0.9), 
+              0 0 12px rgba(255, 0, 0, 0.5);
+}
+
+.md-reader-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #9a9da5;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.md-reader-close:hover {
+  color: #e8e8e8;
+}
+
+.md-reader-content {
+  overflow-y: auto;
+  padding: 18px;
+}
+
+/* 阅读弹层里用的是完整宽度的正文，而不是聊天里那种"最多占 90% 宽度的气泡"，
+   借用 .msg .bubble 的 Markdown 排版样式的同时，把这两条聊天专属的宽度限制去掉。 */
+.md-reader-content .msg,
+.md-reader-content .msg .bubble {
+  width: 100%;
+  max-width: 100%;
+}
+
+.md-reader-content .msg .bubble {
+  background: transparent;
+  padding: 0;
+}
+
+/* ---- 阅读弹层专属的排版：比聊天气泡里的尺寸明显放大一档 ----
+   聊天气泡里的标题/引用/列表故意做得很克制（毕竟气泡本身空间有限），直接搬到
+   一个独立的长文阅读弹层里就会显得"看起来像没生效"。这里针对
+   .md-reader-content 单独放大字号、间距、行距，做出清晰的排版层级，
+   同时不影响聊天气泡内本来就偏紧凑的样式。 */
+.md-reader-content .msg {
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.md-reader-content .msg .bubble .md-heading {
+  margin: 22px 0 12px;
+  line-height: 1.35;
+  font-weight: 700;
+  color: #f2f2f3;
+}
+.md-reader-content .msg .bubble .md-heading:first-child {
+  margin-top: 0;
+}
+.md-reader-content .msg .bubble h1.md-heading {
+  font-size: 28px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2c3038;
+}
+.md-reader-content .msg .bubble h2.md-heading {
+  font-size: 23px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2c3038;
+}
+.md-reader-content .msg .bubble h3.md-heading { font-size: 19px; }
+.md-reader-content .msg .bubble h4.md-heading { font-size: 17px; }
+.md-reader-content .msg .bubble h5.md-heading,
+.md-reader-content .msg .bubble h6.md-heading { font-size: 16px; }
+
+.md-reader-content .msg .bubble p.md-p {
+  margin: 14px 0;
+}
+
+.md-reader-content .msg .bubble .md-quote {
+  margin: 14px 0;
+  padding: 8px 18px;
+  border-left: 4px solid #5a8dee;
+  background: rgba(90, 141, 238, 0.08);
+  border-radius: 0 6px 6px 0;
+  color: #ced1d8;
+  opacity: 1;
+}
+.md-reader-content .msg .bubble .md-quote .md-quote {
+  background: rgba(90, 141, 238, 0.05);
+}
+
+.md-reader-content .msg .bubble .md-list {
+  margin: 12px 0;
+  padding-left: 28px;
+}
+.md-reader-content .msg .bubble .md-list li {
+  margin: 8px 0;
+}
+
+.md-reader-content .msg .bubble pre.md-code-block code {
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.md-reader-content .msg .bubble .md-hr {
+  margin: 24px 0;
+}
+
+.md-reader-content .msg .bubble .md-table th,
+.md-reader-content .msg .bubble .md-table td {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* 响应式：窄屏下弹层留白收窄，尽量把空间让给正文 */
+@media (max-width: 860px) {
+  .md-reader {
+    padding: 16px;
+  }
+
+  .md-reader-header {
+    padding: 12px 14px;
+  }
+
+  .md-reader-content {
+    padding: 14px;
+  }
+}
+
 
 /* =========================================================
    登录页开始 (login.html)
@@ -774,6 +968,22 @@ a.btn-ghost {
   text-decoration: underline;
 }
 
+/* "阅读"按钮：只有 Markdown 文件才会出现，放在下载前面。用中性蓝色和"下载"的强调红区分开，
+   暗示这是一个更轻量、不产生下载动作的操作。 */
+.attachment-read {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #7a9dcc;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.attachment-read:hover {
+  text-decoration: underline;
+}
+
 /* 响应式：窄屏下附件栏目左右留白收窄，行内边距也相应缩小 */
 @media (max-width: 860px) {
   .attachments {
@@ -866,7 +1076,7 @@ a.btn-ghost {
 /* 单条消息的外层容器：默认按“对方消息”靠左对齐排列 */
 .msg {
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.7;
   display: flex;           /* ← 让 .msg 成为 flex 列容器 */
   flex-direction: column;
   align-items: flex-start; /* 对方消息：内容靠左 */
@@ -951,6 +1161,27 @@ a.btn-ghost {
   border-radius: 8px;
   cursor: pointer;
   object-fit: cover;
+}
+
+/* 语音消息气泡：原生 <audio controls> 播放条 + 一个小的时长文字提示，
+   背景/内边距和图片气泡一样去掉，让播放条本身撑起视觉重量。 */
+.msg .bubble.voice-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: transparent;
+}
+
+.msg .bubble .chat-voice {
+  height: 32px;
+  max-width: 240px;
+}
+
+.msg .bubble .voice-duration {
+  font-size: 12px;
+  color: #9a9da5;
+  flex-shrink: 0;
 }
 
 /* ---- Markdown 扩展语法样式（聊天气泡内，由 markdown.js 生成对应的 class） ---- */
@@ -1062,9 +1293,14 @@ a.btn-ghost {
   margin-bottom: 0;
 }
 
-/* 代码块（```lang ... ```） */
-.msg .bubble pre.md-code-block {
+/* 代码块（```lang ... ```）：外层 wrap 负责间距和"复制"按钮的定位参照，
+   pre 本身不再自带 margin（避免和 wrap 的 margin 叠加成两倍空隙）。 */
+.msg .bubble .md-code-block-wrap {
+  position: relative;
   margin: 6px 0;
+}
+.msg .bubble pre.md-code-block {
+  margin: 0;
   padding: 10px 12px;
   background: #14161a;
   border: 1px solid #2c3038;
@@ -1080,6 +1316,30 @@ a.btn-ghost {
   line-height: 1.5;
   white-space: pre;
   color: #d8dae0;
+}
+
+/* 代码块右上角的"复制"按钮：默认低调（半透明底），hover/复制成功时给出明确反馈 */
+.md-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #c7cad1;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.md-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.md-copy-btn.copied {
+  background: rgba(90, 200, 130, 0.22);
+  border-color: rgba(90, 200, 130, 0.5);
+  color: #8be0a8;
 }
 
 /* 数学公式：行内用淡紫色底色和代码区分开；块级单独一个框 */
@@ -1272,6 +1532,50 @@ a.btn-ghost {
 
 .icon-btn:hover {
   background: #262932;
+}
+
+/* 麦克风按钮录音中的状态：红色底色 + 轻微脉冲动画，明确提示"正在录音、再点一下发送" */
+.icon-btn#voiceBtn.recording {
+  background: #e2554a;
+  color: #fff;
+  animation: voice-btn-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes voice-btn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 录音中的小状态条：红点 + 计时 + 取消按钮，紧跟在麦克风按钮后面 */
+.voice-recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #e2554a;
+  padding: 4px 8px;
+}
+
+.voice-recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e2554a;
+  animation: voice-btn-pulse 1.4s ease-in-out infinite;
+}
+
+.voice-cancel-btn {
+  background: transparent;
+  border: none;
+  color: #9a9da5;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.voice-cancel-btn:hover {
+  color: #e8e8e8;
 }
 
 /* ---- 表情选择面板 ---- */

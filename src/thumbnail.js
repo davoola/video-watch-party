@@ -68,14 +68,13 @@ function getCacheKey(fullPath, stat) {
 
 const inflightGenerations = new Map(); // cacheKey -> Promise，避免同一个视频被并发重复生成
 
-function generateThumbnail(fullPath, outputPath) {
+function runFfmpeg(fullPath, outputPath, seekSeconds) {
   return new Promise((resolve, reject) => {
     // -ss 放在 -i 之前可以用 ffmpeg 的快速 seek（基于关键帧跳转），
     // 对大文件也能很快截到帧，不需要解码整个视频。
-    // 取视频开始后的第 3 秒，比第 0 秒更可能避开片头黑屏/Logo。
     const args = [
       '-y', // 覆盖已存在的输出文件
-      '-ss', '3',
+      '-ss', String(seekSeconds),
       '-i', fullPath,
       '-frames:v', '1',
       '-vf', 'scale=320:-1',
@@ -88,14 +87,25 @@ function generateThumbnail(fullPath, outputPath) {
     proc.stderr.on('data', (chunk) => { stderr += chunk; });
 
     proc.on('error', (err) => reject(err));
-    proc.on('exit', (code) => {
-      if (code === 0 && fs.existsSync(outputPath)) {
+    proc.on('exit', async (code) => {
+      if (code === 0 && (await pathExists(outputPath))) {
         resolve();
       } else {
         reject(new Error(`ffmpeg 退出码 ${code}: ${stderr.slice(-300)}`));
       }
     });
   });
+}
+
+async function generateThumbnail(fullPath, outputPath) {
+  // 取视频开始后的第 3 秒，比第 0 秒更可能避开片头黑屏/Logo。
+  // 但如果视频本身短于 3 秒（短片段/预告片常见），-ss 3 会 seek 到片尾之后截不到帧、
+  // 直接失败——这种情况退一步用 -ss 0 重试一次，而不是让缩略图静默变成默认图标。
+  try {
+    await runFfmpeg(fullPath, outputPath, 3);
+  } catch {
+    await runFfmpeg(fullPath, outputPath, 0);
+  }
 }
 
 // 返回缩略图文件的绝对路径；如果还没生成过，会先生成再返回。

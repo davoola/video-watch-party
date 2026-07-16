@@ -24,6 +24,12 @@
         <button class="icon-btn" id="emojiBtn" title="表情" type="button">😊</button>
         <button class="icon-btn" id="imageBtn" title="发送图片" type="button">🖼️</button>
         <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+        <button class="icon-btn" id="voiceBtn" title="发送语音" type="button">🎤</button>
+        <span class="voice-recording-indicator" id="voiceRecordingIndicator" hidden>
+          <span class="voice-recording-dot"></span>
+          <span id="voiceTimer">0:00</span>
+          <button class="voice-cancel-btn" id="voiceCancelBtn" type="button" title="取消录音">✕</button>
+        </span>
       </div>
       <div class="chat-send-row">
         <textarea id="chatInput" placeholder="说点什么..." maxlength="2000" rows="1"></textarea>
@@ -45,6 +51,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/lightbox.js"></script>
   <script src="/js/markdown.js"></script>
+  <script src="/js/chatShared.js"></script>
   <script src="/js/chat.js"></script>
 </body>
 </html>

@@ -56,7 +56,11 @@
     lightboxEl.hidden = true;
     items = [];
     index = -1;
-    imageEl.src = '';
+    // 用 removeAttribute 而不是 src = ''：把 src 设成空字符串，浏览器会把它解析成
+    // 当前页面的 URL 并发一个 GET 请求（HTML 规范里空字符串相对 URL 就是解析成
+    // 文档 base URL 本身），这个请求毫无意义，只会在 Network 面板里产生噪音，
+    // 弱网下还会有一点不必要的延迟。直接移除 src 属性，浏览器不会发起任何请求。
+    imageEl.removeAttribute('src');
     document.body.style.overflow = '';
   }
 

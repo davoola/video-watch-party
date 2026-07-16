@@ -8,6 +8,10 @@ const attachmentsEl = document.getElementById('attachments');
 const attachmentsListEl = document.getElementById('attachmentsList');
 const galleryEl = document.getElementById('gallery');
 const galleryGridEl = document.getElementById('galleryGrid');
+const mdReaderEl = document.getElementById('mdReader');
+const mdReaderTitleEl = document.getElementById('mdReaderTitle');
+const mdReaderBodyEl = document.getElementById('mdReaderBody');
+const mdReaderCloseBtn = document.getElementById('mdReaderClose');
 
 brandLogo.addEventListener('error', () => { brandLogo.style.display = 'none'; });
 
@@ -260,20 +264,109 @@ function renderAttachments(files) {
     info.appendChild(nameEl);
     info.appendChild(sizeEl);
 
+    row.appendChild(icon);
+    row.appendChild(info);
+
+    // Markdown 文件额外提供一个"阅读"入口：不下载，直接在页面内弹层显示渲染后的全文，
+    // 和下载链接并列放在一起，放在下载前面（先阅读、需要的话再下载）。
+    if (ext === 'md') {
+      const readBtn = document.createElement('button');
+      readBtn.type = 'button';
+      readBtn.className = 'attachment-read';
+      readBtn.textContent = '阅读';
+      readBtn.addEventListener('click', () => openMarkdownReader(f));
+      row.appendChild(readBtn);
+    }
+
     const link = document.createElement('a');
     link.className = 'attachment-download';
     link.href = f.downloadUrl;
     link.download = f.name; // 提示浏览器按下载而不是导航打开
     link.textContent = '下载';
-
-    row.appendChild(icon);
-    row.appendChild(info);
     row.appendChild(link);
+
     attachmentsListEl.appendChild(row);
   });
 
   attachmentsEl.hidden = false;
 }
+
+// ---- Markdown 在线阅读 ----
+// 复用聊天气泡的 .msg .bubble 这套 Markdown 排版样式（标题/列表/表格/代码块等），
+// 弹层本身只负责外层的浮层/滚动容器，不需要重新写一遍 Markdown 排版 CSS。
+async function openMarkdownReader(file) {
+  mdReaderTitleEl.textContent = file.name;
+  mdReaderBodyEl.innerHTML = '<p class="md-p">正在加载...</p>';
+  mdReaderEl.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const res = await fetch('/api/doc-content/' + file.id);
+    const data = await res.json();
+    if (!res.ok) {
+      mdReaderBodyEl.innerHTML = `<p class="md-p">${escapeHtml(data.error || '加载失败')}</p>`;
+      return;
+    }
+    mdReaderBodyEl.innerHTML = renderMarkdown(data.content);
+  } catch {
+    mdReaderBodyEl.innerHTML = '<p class="md-p">加载失败，请检查网络后重试</p>';
+  }
+}
+
+function closeMarkdownReader() {
+  mdReaderEl.hidden = true;
+  mdReaderBodyEl.innerHTML = '';
+  document.body.style.overflow = '';
+}
+
+mdReaderCloseBtn.addEventListener('click', closeMarkdownReader);
+// 点击遮罩空白处（弹层本体之外）也关闭，和图片 lightbox 的交互习惯保持一致
+mdReaderEl.addEventListener('click', (e) => {
+  if (e.target === mdReaderEl) closeMarkdownReader();
+});
+document.addEventListener('keydown', (e) => {
+  if (!mdReaderEl.hidden && e.key === 'Escape') closeMarkdownReader();
+});
+
+// Markdown 代码块右上角的"复制"按钮，和聊天页面用的是同一套事件委托思路
+// （CSP script-src 'self' 不允许内联 onclick），这里监听在阅读弹层的内容容器上。
+async function copyCodeFromButton(button) {
+  const wrap = button.closest('.md-code-block-wrap');
+  const codeEl = wrap && wrap.querySelector('code');
+  if (!codeEl) return;
+
+  const text = codeEl.textContent;
+  const originalLabel = button.textContent;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    button.textContent = '已复制';
+    button.classList.add('copied');
+  } catch {
+    button.textContent = '复制失败';
+  }
+
+  setTimeout(() => {
+    button.textContent = originalLabel;
+    button.classList.remove('copied');
+  }, 1500);
+}
+
+mdReaderBodyEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.md-copy-btn');
+  if (btn) copyCodeFromButton(btn);
+});
 
 
 

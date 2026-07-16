@@ -9,8 +9,17 @@ if (!videoId) {
 const videoEl = document.getElementById('player');
 const danmakuOverlay = document.getElementById('danmakuOverlay');
 const danmakuToggle = document.getElementById('danmakuToggle');
-const chatMessages = document.getElementById('chatMessages');
-const chatInput = document.getElementById('chatInput');
+
+// 恢复上次的弹幕开关偏好：HTML 里 <input id="danmakuToggle" checked> 默认是勾选状态，
+// 如果这段"读 localStorage、按需改成未勾选"的逻辑放在文件末尾才执行，中间会有一帧
+// "先渲染成默认勾选、再被 JS 改回未勾选"的闪烁（虽然很轻微，但确实存在）。
+// 放在这里、拿到 DOM 引用后立刻执行，能在浏览器第一次绘制这个页面之前就把状态改对，
+// 不需要等到整个脚本跑完。
+const savedDanmakuPref = localStorage.getItem('vwp_danmaku_enabled');
+if (savedDanmakuPref !== null) {
+  danmakuToggle.checked = savedDanmakuPref === '1';
+}
+
 const sendBtn = document.getElementById('sendBtn');
 const meText = document.getElementById('meText');
 const presenceText = document.getElementById('presenceText');
@@ -18,10 +27,6 @@ const videoNameText = document.getElementById('videoNameText');
 const chatPanel = document.getElementById('chatPanel');
 const chatToggleBar = document.getElementById('chatToggleBar');
 const unreadBadge = document.getElementById('unreadBadge');
-const emojiBtn = document.getElementById('emojiBtn');
-const emojiPicker = document.getElementById('emojiPicker');
-const imageBtn = document.getElementById('imageBtn');
-const imageInput = document.getElementById('imageInput');
 const chatResizer = document.getElementById('chatResizer');
 
 // 统一的响应式断点判断：matches === true 表示当前是移动布局。
@@ -89,8 +94,14 @@ async function loadMe() {
 // ==================== Socket 连接 ====================
 const socket = io();
 
+// 把这个页面的 roomId（视频房间的 videoId）和"怎么拿到当前 socket"告诉共享的聊天逻辑
+// （chatShared.js），图片/语音发送时会用到。播放页的 socket 是上面这行同步创建的、
+// 不会是 null，所以 chatShared.js 里对应的 null 检查在这个页面永远不会触发，
+// 纯粹是为了和独立聊天室页面共用同一份逻辑。
+initChatShared({ roomId: videoId, getSocket: () => socket });
+
 socket.on('connect', () => {
-  socket.emit('join-room', { videoId, videoName });
+  socket.emit('join-room', { videoId });
 });
 
 socket.on('connect_error', (err) => {
@@ -108,8 +119,9 @@ socket.on('chat-system', ({ text }) => appendSystemMessage(text));
 // 刚加入房间时，服务端会把这个房间最近的聊天记录发过来（重新整理过的，按时间顺序）。
 // 用一条分隔线把"历史消息"和"接下来的新消息"区分开，避免让人误以为是刚刚发生的对话。
 socket.on('chat-history', ({ messages }) => {
-  if (!messages || messages.length === 0) return;
-  messages.forEach((msg) => {
+  const fresh = filterNewHistoryMessages(messages);
+  if (fresh.length === 0) return;
+  fresh.forEach((msg) => {
     appendChatMessage(msg, msg.from === myUsername);
   });
   appendHistoryDivider();
@@ -128,6 +140,30 @@ socket.on('chat-message', (data) => {
 });
 
 // ==================== 播放同步 ====================
+
+// 刚进页面（或者重连）时，视频的 metadata 可能还没加载完（readyState < 1 / HAVE_METADATA）。
+// 这时候如果直接 videoEl.currentTime = time，不同浏览器的实际表现不完全一致——按规范
+// 应该被记成"默认播放起始位置"、等 metadata 加载完后自动生效，但实践中确实观察到
+// 部分浏览器/场景下这次赋值会被直接忽略，导致"刚进页面/断线重连"时的这一次同步偶发
+// 失效（后续的心跳最终还是会纠正，但要多等最多 5 秒）。这里显式处理：metadata 还没
+// 好的话就先记下来，等 loadedmetadata 事件真正触发后再补上。
+let pendingSeekTime = null;
+
+function applySeekTime(time) {
+  if (videoEl.readyState >= 1) { // HAVE_METADATA 及以上，duration/可寻址范围已经确定
+    videoEl.currentTime = time;
+  } else {
+    pendingSeekTime = time;
+  }
+}
+
+videoEl.addEventListener('loadedmetadata', () => {
+  if (pendingSeekTime !== null) {
+    videoEl.currentTime = pendingSeekTime;
+    pendingSeekTime = null;
+  }
+});
+
 socket.on('video-action', ({ action, time }) => {
   const tolerance = action === 'heartbeat' ? SYNC_TOLERANCE_HEARTBEAT : SYNC_TOLERANCE_ACTION;
   const diff = Math.abs(videoEl.currentTime - time);
@@ -141,7 +177,7 @@ socket.on('video-action', ({ action, time }) => {
   const expectedCount = (willSeek ? 1 : 0) + (willPlay || willPause ? 1 : 0);
   if (expectedCount > 0) expectRemoteEvents(expectedCount);
 
-  if (willSeek) videoEl.currentTime = time;
+  if (willSeek) applySeekTime(time);
 
   if (action === 'play') {
     videoEl.play().catch(() => {
@@ -203,104 +239,14 @@ sendBtn.addEventListener('click', sendChat);
 
 chatInput.addEventListener('input', autoResizeTextarea);
 
-// Enter 发送消息；Shift+Enter 换行（不发送，走 textarea 默认行为插入换行符）
+// Enter 发送消息；Shift+Enter 换行（不发送，走 textarea 默认行为插入换行符）；
+// 中文/日文/韩文输入法选字确认时按的 Enter 不算发送，见 isSendEnterKey() 的注释
 chatInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (isSendEnterKey(e)) {
     e.preventDefault();
     sendChat();
   }
 });
-
-
-// 生成头像元素：有头像 URL 就显示图片，否则显示名字首字符圆圈
-function makeAvatar(name, avatarUrl) {
-  if (avatarUrl) {
-    const img = document.createElement('img');
-    img.className = 'avatar';
-    img.src = avatarUrl;
-    img.alt = name;
-    img.addEventListener('error', () => img.replaceWith(makeAvatar(name, null)));
-    return img;
-  }
-  const el = document.createElement('div');
-  el.className = 'avatar-initial';
-  el.textContent = (name || '?').charAt(0).toUpperCase();
-  return el;
-}
-
-// ---- 聊天图片的 lightbox：点开任意一张图，左右/上下键能翻遍"当前聊天记录里的所有图片"
-// （不管是直接发送的图片，还是 Markdown 语法 ![alt](url) 插入的行内图片），不是只能看那一张。
-// 每次点击时都重新从 DOM 里查一遍当前所有图片，而不是维护一个额外的数组去同步，
-// 这样即使消息列表被清空重建（比如切换视频房间），也不会有"数组和 DOM 对不上"的问题。
-function openChatImageLightbox(clickedImg) {
-  const allImages = Array.from(chatMessages.querySelectorAll('img.chat-image, img.md-image'));
-  const items = allImages.map((img) => ({ url: img.src, caption: img.dataset.caption || '' }));
-  const index = allImages.indexOf(clickedImg);
-  Lightbox.open(items, index >= 0 ? index : 0);
-}
-
-// ==================== 消息渲染 ====================
-function appendChatMessage(data, isSelf) {
-  const div = document.createElement('div');
-  div.className = 'msg' + (isSelf ? ' self' : '');
-
-  // 头像 + 用户名行
-  const meta = document.createElement('div');
-  meta.className = 'msg-meta';
-
-  const avatarEl = makeAvatar(data.from, data.avatar || null);
-  const who = document.createElement('span');
-  who.className = 'who';
-  who.textContent = data.from;
-
-  // 自己：名字在左、头像在右（由 CSS flex-direction:row-reverse 控制）
-  meta.appendChild(avatarEl);
-  meta.appendChild(who);
-  div.appendChild(meta);
-
-  // 消息气泡
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-
-  if (data.type === 'image') {
-    bubble.classList.add('image-bubble');
-    const img = document.createElement('img');
-    img.className = 'chat-image';
-    img.src = data.imageUrl;
-    img.alt = '图片消息';
-    img.dataset.caption = data.from ? `来自 ${data.from}` : '';
-    img.addEventListener('click', () => openChatImageLightbox(img));
-    bubble.appendChild(img);
-  } else {
-    bubble.innerHTML = renderMarkdown(data.text);
-    // Markdown 里 ![alt](url) 语法插入的行内图片，也要能点开 lightbox，
-    // 和上面直接发送的图片共用同一套"翻遍所有图片"的逻辑。
-    bubble.querySelectorAll('img.md-image').forEach((img) => {
-      img.dataset.caption = data.from ? `来自 ${data.from}` : '';
-      img.addEventListener('click', () => openChatImageLightbox(img));
-    });
-  }
-
-  div.appendChild(bubble);
-  chatMessages.appendChild(div);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function appendSystemMessage(text) {
-  const div = document.createElement('div');
-  div.className = 'msg system';
-  div.textContent = text;
-  chatMessages.appendChild(div);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-  return div;
-}
-
-function appendHistoryDivider() {
-  const div = document.createElement('div');
-  div.className = 'history-divider';
-  div.textContent = '以上是历史消息';
-  chatMessages.appendChild(div);
-}
 
 // ==================== 弹幕 ====================
 const DANMAKU_LANES = 6; // 从 7 调整为 6，配合更大的字号，轨道之间留出更舒服的间距
@@ -353,80 +299,6 @@ function spawnDanmaku(rawText) {
 
 danmakuToggle.addEventListener('change', () => {
   localStorage.setItem('vwp_danmaku_enabled', danmakuToggle.checked ? '1' : '0');
-});
-
-// 恢复上次的弹幕开关偏好
-const savedDanmakuPref = localStorage.getItem('vwp_danmaku_enabled');
-if (savedDanmakuPref !== null) {
-  danmakuToggle.checked = savedDanmakuPref === '1';
-}
-
-// ==================== 表情选择器 ====================
-const EMOJI_LIST = [
-  '😀', '😂', '🤣', '😊', '😍', '🥰', '😘', '😜', '🤔', '😏',
-  '😅', '😭', '😡', '🥺', '😱', '🤯', '🥳', '😴', '🤤', '🙄',
-  '👍', '👎', '👏', '🙏', '💪', '❤️', '💔', '🔥', '✨', '🎉',
-  '😎', '🤗', '🫡', '😬', '🤩', '😇', '👀', '💯', '🍿', '☕',
-];
-
-let emojiPickerBuilt = false;
-function buildEmojiPicker() {
-  if (emojiPickerBuilt) return;
-  EMOJI_LIST.forEach((emoji) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = emoji;
-    btn.addEventListener('click', () => {
-      chatInput.value += emoji;
-      chatInput.focus();
-      autoResizeTextarea();
-	  emojiPicker.hidden = true;
-    });
-    emojiPicker.appendChild(btn);
-  });
-  emojiPickerBuilt = true;
-}
-
-emojiBtn.addEventListener('click', () => {
-  buildEmojiPicker();
-  emojiPicker.hidden = !emojiPicker.hidden;
-});
-
-// ==================== 图片发送 ====================
-imageBtn.addEventListener('click', () => imageInput.click());
-
-imageInput.addEventListener('change', async () => {
-  const file = imageInput.files[0];
-  imageInput.value = '';
-  if (!file) return;
-
-  if (file.size > 5 * 1024 * 1024) {
-    appendSystemMessage('图片不能超过 5MB');
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append('image', file);
-
-  // "正在发送图片..." 只是临时状态提示，不应该和正式聊天记录一样永久留在聊天区里——
-  // 发送成功后要把这条提示删掉（马上会收到 socket 广播回来的正式图片消息），
-  // 失败的话就地把文字换成错误原因，而不是再叠加一条新的系统消息。
-  const statusEl = appendSystemMessage('正在发送图片...');
-
-  try {
-    const res = await fetch('/api/chat-upload', { method: 'POST', body: formData });
-    const data = await res.json();
-
-    if (!res.ok) {
-      statusEl.textContent = data.error || '图片发送失败';
-      return;
-    }
-
-    statusEl.remove();
-    socket.emit('chat-message', { videoId, type: 'image', imageUrl: data.url });
-  } catch (err) {
-    statusEl.textContent = '图片发送失败，请检查网络';
-  }
 });
 
 // ==================== 移动端聊天抽屉 ====================
@@ -540,12 +412,6 @@ window.addEventListener('resize', () => {
   if (mobileLayoutQuery.matches) return;
   const current = parseFloat(chatPanel.style.width);
   if (Number.isFinite(current)) setChatWidth(current);
-});
-
-document.addEventListener('click', (e) => {
-  if (!emojiPicker.hidden && !emojiBtn.contains(e.target) && !emojiPicker.contains(e.target)) {
-    emojiPicker.hidden = true;
-  }
 });
 
 loadMe();

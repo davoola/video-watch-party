@@ -27,25 +27,35 @@ async function viewImage(req, res) {
     return res.status(404).json({ error: '图片不存在或无权访问' });
   }
 
-  let stat;
   try {
-    stat = await fs.promises.stat(fullPath);
+    await fs.promises.stat(fullPath);
   } catch {
     return res.status(404).json({ error: '图片不存在或无权访问' });
   }
 
-  res.setHeader('Content-Type', getMimeType(fullPath));
-  res.setHeader('Content-Length', stat.size);
-  // 私人影院场景下这些图片很少变动，允许浏览器缓存一段时间，减少重复请求
-  res.setHeader('Cache-Control', 'private, max-age=86400');
-
-  const stream = fs.createReadStream(fullPath);
-  stream.on('error', (err) => {
-    console.error('图片读取错误:', err.message);
-    if (!res.headersSent) res.status(500).end();
-    else res.end();
-  });
-  stream.pipe(res);
+  // 和 serveChatVoice 一样的原因：部分移动浏览器对体积较大的图片（高分辨率 PNG、
+  // TIFF 之类）也会发 Range 探测请求，某些 HTTP 代理/CDN 也期望资源本身带
+  // Accept-Ranges: bytes 才启用缓存；之前手写 createReadStream + pipe 不处理 Range，
+  // 改用 Express 内置的 res.sendFile（底层 send 包）自动处理 Range/206/Accept-Ranges，
+  // 不需要手写解析逻辑，也不容易有边界条件遗漏。
+  res.sendFile(
+    fullPath,
+    {
+      headers: {
+        'Content-Type': getMimeType(fullPath),
+        'Cache-Control': 'private, max-age=86400', // 私人影院场景下这些图片很少变动，允许浏览器缓存一段时间
+      },
+    },
+    (err) => {
+      if (err) {
+        if (!res.headersSent) {
+          res.status(err.status === 404 ? 404 : 500).json({ error: '图片不存在或读取失败' });
+        } else {
+          res.end();
+        }
+      }
+    }
+  );
 }
 
 module.exports = { viewImage };

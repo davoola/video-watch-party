@@ -179,33 +179,57 @@ function resolveSubDir(relDir) {
 // "整个视频库"更新得更频繁（用户随时可能往里面加文件/图片/文档），缓存时间不宜太长。
 const DIR_CACHE_TTL_MS = 15_000;
 
-// 给定一个"relDir -> 结果"的同步函数，返回一个带缓存的版本；每个目录各自独立缓存，
+// 给定一个"relDir -> 结果"的异步函数，返回一个带缓存的版本；每个目录各自独立缓存，
 // 互不影响（用 relDir 本身当 key）。scanDirContents / scanDirDownloads / scanDirImages
 // 三个函数分别调用这个包装器各自生成一份缓存，不会互相串。
+// 除了缓存本身，这里还做了"进行中请求去重"（in-flight dedup）：缓存过期的瞬间，如果
+// 好几个请求几乎同时到达同一个目录（比如切换目录时 /api/browse + /api/dir-docs +
+// /api/dir-images 一起打过来，或者两个人同时浏览到同一个新目录），异步版本不会像
+// 之前的同步版本那样天然串行，如果不处理，会各自触发一次独立的目录扫描——用一个
+// Map 记录"这个目录现在是否已经有一次扫描正在进行"，后来者直接复用同一个 Promise。
 function memoizeDirScan(fn) {
   const cache = new Map(); // relDir -> { value, cachedAt }
+  const inFlight = new Map(); // relDir -> 正在进行中的扫描 Promise
   return function cachedFn(relDir) {
     const key = relDir || '';
     const now = Date.now();
     const cached = cache.get(key);
     if (cached && now - cached.cachedAt < DIR_CACHE_TTL_MS) {
-      return cached.value;
+      return Promise.resolve(cached.value);
     }
-    const value = fn(relDir);
-    cache.set(key, { value, cachedAt: now });
-    return value;
+    if (inFlight.has(key)) {
+      return inFlight.get(key);
+    }
+    const promise = fn(relDir)
+      .then((value) => {
+        cache.set(key, { value, cachedAt: Date.now() });
+        inFlight.delete(key);
+        return value;
+      })
+      .catch((err) => {
+        inFlight.delete(key);
+        throw err;
+      });
+    inFlight.set(key, promise);
+    return promise;
   };
 }
 
 // 返回指定相对目录下的直接子目录和视频文件（不递归）
 // relDir: 相对于 VIDEO_DIR 的路径，'' 表示根目录
-function scanDirContentsUncached(relDir) {
+//
+// 之前这三个 *Uncached 函数（这个 + scanDirDownloadsUncached + scanDirImagesUncached）
+// 用的是 readdirSync/statSync，和文件里其它地方"一律用异步 fs.promises API，避免同步
+// 阻塞事件循环"的原则不一致——15 秒的目录缓存让实际命中率很高，但缓存过期后的第一个
+// 请求仍然会同步卡住整个事件循环，期间连视频流的 Range 请求都要等它扫完才能继续。
+// 改成异步之后，调用方（videoApi.js 的三个路由）也相应改成 await。
+async function scanDirContentsUncached(relDir) {
   const targetDir = resolveSubDir(relDir);
   if (!targetDir) return null; // 路径穿越，拒绝
 
   let entries;
   try {
-    entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
   } catch {
     return null;
   }
@@ -224,7 +248,7 @@ function scanDirContentsUncached(relDir) {
       const ext = path.extname(entry.name).toLowerCase();
       if (ALLOWED_EXT.has(ext)) {
         let size = 0;
-        try { size = fs.statSync(fullPath).size; } catch {}
+        try { size = (await fs.promises.stat(fullPath)).size; } catch {}
         videos.push({
           id: encodeId(entryRel),
           name: entry.name,
@@ -245,13 +269,13 @@ const scanDirContents = memoizeDirScan(scanDirContentsUncached);
 // relDir: 相对于 VIDEO_DIR 的路径，'' 表示根目录；和 scanDirContents 是同一个目录，
 // 只是这里只关心文档/压缩包，视频列表页浏览到某个目录时会同时调用这两个函数。
 // 返回 null 表示目录本身不合法（不存在/越权），返回 [] 表示该目录下没有符合条件的文件。
-function scanDirDownloadsUncached(relDir) {
+async function scanDirDownloadsUncached(relDir) {
   const targetDir = resolveSubDir(relDir);
   if (!targetDir) return null; // 路径穿越，拒绝
 
   let entries;
   try {
-    entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
   } catch {
     return null;
   }
@@ -267,7 +291,7 @@ function scanDirDownloadsUncached(relDir) {
     const entryRelPath = relDir ? relDir + '/' + entry.name : entry.name;
     let size = 0;
     try {
-      size = fs.statSync(path.join(targetDir, entry.name)).size;
+      size = (await fs.promises.stat(path.join(targetDir, entry.name))).size;
     } catch {
       // 文件可能在扫描过程中被删除，忽略
     }
@@ -297,13 +321,13 @@ function resolveDownloadPath(id) {
 // 但 lightbox 要能左右/上下键翻完"这个文件夹下的所有图片"，所以后端要把完整列表都给前端，
 // 由前端自己决定"缩略图只画 8 个、lightbox 可以翻全部"。
 // 返回 null 表示目录本身不合法（不存在/越权），返回 { images: [] } 表示该目录下没有图片。
-function scanDirImagesUncached(relDir) {
+async function scanDirImagesUncached(relDir) {
   const targetDir = resolveSubDir(relDir);
   if (!targetDir) return null; // 路径穿越，拒绝
 
   let entries;
   try {
-    entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
   } catch {
     return null;
   }
@@ -319,7 +343,7 @@ function scanDirImagesUncached(relDir) {
     const entryRelPath = relDir ? relDir + '/' + entry.name : entry.name;
     let size = 0;
     try {
-      size = fs.statSync(path.join(targetDir, entry.name)).size;
+      size = (await fs.promises.stat(path.join(targetDir, entry.name))).size;
     } catch {
       // 文件可能在扫描过程中被删除，忽略
     }
