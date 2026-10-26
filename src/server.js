@@ -7,6 +7,11 @@ const { Server } = require('socket.io');
 const config = require('./config');
 config.validateConfig();
 
+// 尽早初始化 SQLite（建表 + 如有 users.json 则迁移用户），后续登录/聊天都依赖它
+const { getDb } = require('./db');
+getDb();
+console.log('SQLite 数据库:', config.DATABASE_PATH);
+
 const { router: authRouter, requireAuth, requireAuthPage } = require('./auth');
 const videoApiRouter = require('./videoApi');
 const { streamVideo } = require('./videoStream');

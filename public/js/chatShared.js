@@ -138,9 +138,11 @@ function openChatImageLightbox(clickedImg) {
 // （具体原因见 filterNewHistoryMessages 函数上面的注释）。
 let lastHistoryTs = 0;
 
-function appendChatMessage(data, isSelf) {
+// 构建单条消息 DOM（不插入、不滚动），append / prepend 共用
+function buildChatMessageElement(data, isSelf) {
   const div = document.createElement('div');
   div.className = 'msg' + (isSelf ? ' self' : '');
+  if (data.ts) div.dataset.ts = String(data.ts);
 
   // 头像 + 用户名行
   const meta = document.createElement('div');
@@ -194,6 +196,11 @@ function appendChatMessage(data, isSelf) {
   }
 
   div.appendChild(bubble);
+  return div;
+}
+
+function appendChatMessage(data, isSelf) {
+  const div = buildChatMessageElement(data, isSelf);
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -201,6 +208,20 @@ function appendChatMessage(data, isSelf) {
   // 重连时过滤掉已经显示过的历史消息用（见该函数上面的注释）。这里不区分消息是通过
   // 实时的 chat-message 广播收到的、还是通过 chat-history 补齐的，两种来源都要算。
   if (data.ts && data.ts > lastHistoryTs) lastHistoryTs = data.ts;
+}
+
+// 把更早的历史消息插到列表顶部，不自动滚动到底部。
+// 返回插入后应恢复的 scrollTop（调用方用 prevScrollHeight 计算：newHeight - oldHeight + oldScrollTop）。
+// 不更新 lastHistoryTs（这些消息比当前最新的还旧）。
+function prependChatMessages(messages, isSelfFn) {
+  if (!messages || messages.length === 0) return;
+  const frag = document.createDocumentFragment();
+  for (const msg of messages) {
+    const isSelf = typeof isSelfFn === 'function' ? isSelfFn(msg) : false;
+    frag.appendChild(buildChatMessageElement(msg, isSelf));
+  }
+  // 插在现有内容最前面（若有“历史分隔线”等，也一并顶下去）
+  chatMessages.insertBefore(frag, chatMessages.firstChild);
 }
 
 function appendSystemMessage(text) {

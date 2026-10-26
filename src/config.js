@@ -8,6 +8,16 @@ const VIDEO_DIR = process.env.VIDEO_DIR;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const USERS_FILE = path.join(__dirname, '..', 'config', 'users.json');
 
+// SQLite 数据库文件路径：可通过 .env 的 DATABASE_PATH 指定目录+文件名。
+// 支持相对路径（相对项目根目录）和绝对路径；未设置时默认 data/private-cinema.db。
+const DATABASE_PATH = (() => {
+  const raw = (process.env.DATABASE_PATH || '').trim();
+  if (!raw) {
+    return path.join(__dirname, '..', 'data', 'private-cinema.db');
+  }
+  return path.isAbsolute(raw) ? raw : path.join(__dirname, '..', raw);
+})();
+
 // 站点名称：显示在浏览器标签页标题、首页顶部品牌区等位置。
 // 不设置的话保留原来的默认值"私密影院"，不影响现有部署。
 const SITE_NAME = process.env.SITE_NAME || '私密影院';
@@ -68,6 +78,7 @@ module.exports = {
   VIDEO_DIR: VIDEO_DIR ? path.resolve(VIDEO_DIR) : null,
   NODE_ENV,
   USERS_FILE,
+  DATABASE_PATH,
   CHAT_UPLOAD_DIR,
   THUMBNAIL_DIR,
   TRUST_PROXY,

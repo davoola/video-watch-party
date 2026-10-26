@@ -1,4 +1,4 @@
-// 独立聊天室使用固定房间 ID，服务端复用现有 join-room 机制，无需任何服务端改动
+// 独立聊天室使用固定房间 ID，服务端复用现有 join-room 机制
 const CHAT_ROOM_ID = '__lobby_chat__';
 
 const sendBtn = document.getElementById('sendBtn');
@@ -7,6 +7,11 @@ const presenceText = document.getElementById('presenceText');
 
 let myUsername = '';
 let socket = null;
+
+// 向上翻历史：当前列表中最旧一条消息的时间戳；是否还有更早记录；是否正在请求中
+let oldestHistoryTs = null;
+let historyHasMore = false;
+let historyLoading = false;
 
 // 把这个页面的 roomId 和"怎么拿到当前 socket"告诉共享的聊天逻辑（chatShared.js），
 // 图片/语音发送时会用到。这里立刻调用、不等 socket 真正连上——getSocket 是一个
@@ -30,12 +35,50 @@ async function loadMe() {
   }
 }
 
+// 根据一批消息更新“最旧时间戳”
+function updateOldestFromMessages(messages) {
+  if (!messages || messages.length === 0) return;
+  for (const msg of messages) {
+    if (msg.ts && (oldestHistoryTs == null || msg.ts < oldestHistoryTs)) {
+      oldestHistoryTs = msg.ts;
+    }
+  }
+}
+
+function requestOlderHistory() {
+  if (!socket || historyLoading || !historyHasMore) return;
+  if (oldestHistoryTs == null) return;
+  historyLoading = true;
+  showLoadMoreHint('加载中…');
+  socket.emit('chat-load-more', { beforeTs: oldestHistoryTs });
+}
+
+function showLoadMoreHint(text) {
+  let el = document.getElementById('chatLoadMoreHint');
+  if (!text) {
+    if (el) el.remove();
+    return;
+  }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'chatLoadMoreHint';
+    el.className = 'msg system';
+    chatMessages.insertBefore(el, chatMessages.firstChild);
+  }
+  el.textContent = text;
+}
+
 // ---- Socket 初始化 ----
 function initSocket() {
   socket = io();
 
   socket.on('connect', () => {
-    socket.emit('join-room', { videoId: CHAT_ROOM_ID }); // 服务端会用 videoId 反查/固定房间名，不再需要客户端传 videoName（和 player.js 保持一致）
+    // 重连时重置分页状态：服务端会再发一轮最近历史，之后可继续向上翻
+    oldestHistoryTs = null;
+    historyHasMore = false;
+    historyLoading = false;
+    showLoadMoreHint(null);
+    socket.emit('join-room', { videoId: CHAT_ROOM_ID });
   });
 
   socket.on('connect_error', (err) => {
@@ -49,12 +92,40 @@ function initSocket() {
       : '等待对方加入...';
   });
 
-  socket.on('chat-history', ({ messages }) => {
+  socket.on('chat-history', ({ messages, hasMore }) => {
     const fresh = filterNewHistoryMessages(messages);
-    if (fresh.length === 0) return;
+    if (fresh.length === 0) {
+      // 可能是重连且没有新消息，但服务端仍可能告知 hasMore
+      if (typeof hasMore === 'boolean') historyHasMore = hasMore;
+      return;
+    }
     fresh.forEach((msg) => appendChatMessage(msg, msg.from === myUsername));
     appendHistoryDivider();
+    updateOldestFromMessages(fresh);
+    // 首次/重连批次：以服务端 hasMore 为准；若未带该字段，按“是否满页”猜测
+    historyHasMore = typeof hasMore === 'boolean' ? hasMore : fresh.length >= 100;
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
+
+  // 向上翻：更早的一批历史，插到顶部并保持当前阅读位置不跳动
+  socket.on('chat-history-more', ({ messages, hasMore }) => {
+    historyLoading = false;
+    showLoadMoreHint(null);
+
+    if (!messages || messages.length === 0) {
+      historyHasMore = false;
+      return;
+    }
+
+    const prevHeight = chatMessages.scrollHeight;
+    const prevTop = chatMessages.scrollTop;
+
+    prependChatMessages(messages, (msg) => msg.from === myUsername);
+    updateOldestFromMessages(messages);
+    historyHasMore = typeof hasMore === 'boolean' ? hasMore : messages.length >= 50;
+
+    // 保持用户当前看到的内容不动：新内容加在上方后，滚动位置补偿高度差
+    chatMessages.scrollTop = prevTop + (chatMessages.scrollHeight - prevHeight);
   });
 
   socket.on('chat-system', ({ text }) => appendSystemMessage(text));
@@ -63,6 +134,18 @@ function initSocket() {
     appendChatMessage(data, data.from === myUsername);
   });
 }
+
+// 滚到顶部附近时请求更早历史（阈值节流，避免连续触发）
+let scrollLoadTimer = null;
+chatMessages.addEventListener('scroll', () => {
+  if (scrollLoadTimer) return;
+  scrollLoadTimer = setTimeout(() => {
+    scrollLoadTimer = null;
+    if (chatMessages.scrollTop <= 40) {
+      requestOlderHistory();
+    }
+  }, 120);
+});
 
 // ---- 发送文字消息 ----
 function sendChat() {
@@ -74,10 +157,15 @@ function sendChat() {
 }
 
 sendBtn.addEventListener('click', sendChat);
-// 中文/日文/韩文输入法选字确认时按的 Enter 不算发送，见 isSendEnterKey() 的注释
+// 中文/日文/韩文输入法选字确认时的 Enter 不能触发发送，见 chatShared.js 里 isSendEnterKey 的说明
 chatInput.addEventListener('keydown', (e) => {
-  if (isSendEnterKey(e)) { e.preventDefault(); sendChat(); }
+  if (isSendEnterKey(e)) {
+    e.preventDefault();
+    sendChat();
+  }
 });
+
+// 输入时自动增高（有上限）
 chatInput.addEventListener('input', () => {
   chatInput.style.height = 'auto';
   chatInput.style.height = Math.min(chatInput.scrollHeight, 160) + 'px';

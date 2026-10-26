@@ -9,6 +9,7 @@ const path = require('path');
 const { isValidChatImageFilename, isValidChatVoiceFilename } = require('./chatUpload');
 const { resolveVideoPath } = require('./videoScanner');
 const { CHAT_IMAGE_RETENTION_DAYS } = require('./config');
+const { getDb } = require('./db');
 
 const ROOM_PREFIX = 'video:';
 const LOBBY_ROOM = 'lobby';
@@ -173,11 +174,103 @@ function initSocket(io) {
     }
   }, 60 * 60 * 1000).unref(); // 每小时扫一次，足够及时又不会太频繁
 
+  // 独立聊天室（chat.html）的 room 名；只有这个房间的聊天写入 SQLite 持久化，
+  // 各视频房间仍只保留内存记录（服务重启后清空），行为与改造前一致。
+  const LOBBY_CHAT_ROOM = ROOM_PREFIX + CHAT_LOBBY_ROOM_ID;
+
+  function isLobbyChatRoom(room) {
+    return room === LOBBY_CHAT_ROOM;
+  }
+
+  function rowToMessage(row) {
+    const msg = {
+      from: row.from_user,
+      avatar: row.avatar || null,
+      type: row.type,
+      ts: row.ts,
+    };
+    if (row.type === 'image') {
+      msg.imageUrl = row.image_url;
+    } else if (row.type === 'voice') {
+      msg.audioUrl = row.audio_url;
+      msg.durationSec = row.duration_sec || 0;
+    } else {
+      msg.text = row.text || '';
+    }
+    return msg;
+  }
+
+  function saveLobbyMessage(msg) {
+    try {
+      getDb()
+        .prepare(
+          `INSERT INTO chat_messages
+            (room_id, from_user, avatar, type, text, image_url, audio_url, duration_sec, ts)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          LOBBY_CHAT_ROOM,
+          msg.from,
+          msg.avatar || null,
+          msg.type || 'text',
+          msg.type === 'text' ? msg.text || null : null,
+          msg.type === 'image' ? msg.imageUrl || null : null,
+          msg.type === 'voice' ? msg.audioUrl || null : null,
+          msg.type === 'voice' ? msg.durationSec || 0 : null,
+          msg.ts
+        );
+    } catch (err) {
+      console.error('保存聊天室消息到数据库失败:', err.message);
+    }
+  }
+
+  // limit: 条数上限；beforeTs: 若给定，只取时间戳严格早于它的消息（用于“向上翻更早历史”）
+  // 返回按时间从旧到新排序的消息数组。
+  function loadLobbyHistory(limit, beforeTs) {
+    try {
+      let rows;
+      if (beforeTs != null && Number.isFinite(beforeTs)) {
+        rows = getDb()
+          .prepare(
+            `SELECT from_user, avatar, type, text, image_url, audio_url, duration_sec, ts
+             FROM chat_messages
+             WHERE room_id = ? AND ts < ?
+             ORDER BY ts DESC, id DESC
+             LIMIT ?`
+          )
+          .all(LOBBY_CHAT_ROOM, beforeTs, limit);
+      } else {
+        rows = getDb()
+          .prepare(
+            `SELECT from_user, avatar, type, text, image_url, audio_url, duration_sec, ts
+             FROM chat_messages
+             WHERE room_id = ?
+             ORDER BY ts DESC, id DESC
+             LIMIT ?`
+          )
+          .all(LOBBY_CHAT_ROOM, limit);
+      }
+      // SQL 按时间倒序取最近 N 条，再反转成从旧到新，方便前端按时间线展示
+      return rows.reverse().map(rowToMessage);
+    } catch (err) {
+      console.error('从数据库读取聊天室历史失败:', err.message);
+      return [];
+    }
+  }
+
+  // 向上翻历史时每次拉多少条（独立于首次进入房间的 CHAT_HISTORY_MAX）
+  const CHAT_LOAD_MORE_SIZE = 50;
+
   function pushHistory(room, msg) {
     const history = roomHistory.get(room) || [];
     history.push(msg);
     if (history.length > CHAT_HISTORY_MAX) history.shift();
     roomHistory.set(room, history);
+
+    // 仅独立聊天室持久化到 SQLite；视频房间聊天保持纯内存
+    if (isLobbyChatRoom(room)) {
+      saveLobbyMessage(msg);
+    }
   }
 
   // roomHistory 只存在内存里、和聊天图片/语音的磁盘文件是两套独立的生命周期：
@@ -297,9 +390,17 @@ function initSocket(io) {
       });
 
       // 把这个房间最近的聊天记录发给刚加入的这一个连接（不广播给其他人，他们早就看过了）
-      const history = filterStaleMedia(roomHistory.get(room) || []);
+      // 独立聊天室：优先从 SQLite 读取（跨重启保留）；视频房间：仍只用内存记录
+      let history;
+      if (isLobbyChatRoom(room)) {
+        history = filterStaleMedia(loadLobbyHistory(CHAT_HISTORY_MAX));
+      } else {
+        history = filterStaleMedia(roomHistory.get(room) || []);
+      }
       if (history.length > 0) {
-        socket.emit('chat-history', { messages: history });
+        // hasMore：独立聊天室才有意义——返回条数达到上限时，数据库里可能还有更早的记录
+        const hasMore = isLobbyChatRoom(room) && history.length >= CHAT_HISTORY_MAX;
+        socket.emit('chat-history', { messages: history, hasMore });
       }
 
       // 把房间最近一次的播放状态（播放/暂停/进度）同步给刚加入的这一个连接，
@@ -343,6 +444,23 @@ function initSocket(io) {
       const playState = action === 'play' || action === 'pause' ? action : prevPlayState;
       roomState.set(room, { playState, time, updatedAt: Date.now() });
       socket.to(room).emit('video-action', { action, time, from: username, ts: Date.now() });
+    });
+
+    // 独立聊天室：客户端滚到顶部时请求更早的历史（仅 lobby，视频房间不支持）
+    // beforeTs 为当前列表里最旧一条消息的时间戳，服务端返回严格早于它的一批。
+    socket.on('chat-load-more', (data) => {
+      if (!chatRateAllowed(socket.id)) return;
+      const room = socketCurrentRoom.get(socket.id);
+      if (!room || !isLobbyChatRoom(room)) return;
+
+      const beforeTs = data && data.beforeTs;
+      if (typeof beforeTs !== 'number' || !Number.isFinite(beforeTs) || beforeTs <= 0) return;
+
+      const batch = filterStaleMedia(loadLobbyHistory(CHAT_LOAD_MORE_SIZE, beforeTs));
+      socket.emit('chat-history-more', {
+        messages: batch,
+        hasMore: batch.length >= CHAT_LOAD_MORE_SIZE,
+      });
     });
 
     // 聊天消息：支持文本（含 Markdown 原文）、图片、语音三种类型

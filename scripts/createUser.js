@@ -1,48 +1,19 @@
 // 用法: npm run create-user
-// 会交互式询问用户名和密码，将 bcrypt 哈希后的结果写入 config/users.json
+// 会交互式询问用户名和密码，将 bcrypt 哈希后的结果写入 SQLite 用户表
 // 不提供任何注册页面/接口，账号只能由管理员通过这个脚本在服务器上创建。
 
-const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const bcrypt = require('bcryptjs');
 
-const USERS_FILE = path.join(__dirname, '..', 'config', 'users.json');
+// 确保从项目根目录加载 .env（脚本在 scripts/ 下运行）
+require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
+
+const { getDb } = require('../src/db');
+const { DATABASE_PATH } = require('../src/config');
+
 const SALT_ROUNDS = 12;
 const DEFAULT_AVATAR = '/avatar/default.png';
-
-// 内部格式统一为 { hash, avatar }，同时兼容旧的"纯哈希字符串"格式（见 src/users.js 里的说明）
-function loadUsers() {
-  let raw;
-  try {
-    raw = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
-  } catch {
-    return {};
-  }
-
-  const normalized = {};
-  for (const [username, value] of Object.entries(raw)) {
-    if (typeof value === 'string') {
-      normalized[username] = { hash: value, avatar: DEFAULT_AVATAR };
-    } else if (value && typeof value === 'object') {
-      normalized[username] = { hash: value.hash || '', avatar: value.avatar || DEFAULT_AVATAR };
-    }
-  }
-  return normalized;
-}
-
-// 写 users.json 时用"先写临时文件、再重命名"的方式做原子写入，而不是直接 writeFileSync
-// 目标文件。直接写目标文件的话，如果这个脚本运行的同时，正在跑的服务恰好也在读这个文件
-// （比如某个人正在登录），理论上有极小概率读到"写了一半"的内容，导致 JSON.parse 失败
-// （服务端 loadUsers() 的 catch 会把这种情况当成"没有任何用户"，表现为所有人一时登录不了）。
-// 同目录下的 rename 在几乎所有文件系统上都是原子操作，要么读到写之前的完整旧内容，
-// 要么读到写完之后的完整新内容，不会读到中间状态。
-function saveUsers(users) {
-  const content = JSON.stringify(users, null, 2) + '\n';
-  const tmpFile = `${USERS_FILE}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmpFile, content, 'utf-8');
-  fs.renameSync(tmpFile, USERS_FILE);
-}
 
 function ask(rl, question, hidden = false) {
   return new Promise((resolve) => {
@@ -50,16 +21,10 @@ function ask(rl, question, hidden = false) {
       rl.question(question, resolve);
       return;
     }
-    // 隐藏密码输入
     const stdin = process.stdin;
     process.stdout.write(question);
     let input = '';
     let done = false;
-    // 注意：不能假设每次 'data' 事件只包含一个字符——正常手动逐键输入时确实通常是这样，
-    // 但粘贴密码、或输入被更快地整块送达（比如某些终端/管道场景）时，
-    // 一次 'data' 事件可能带来整段多字符的数据（例如 "secret123\n"）。
-    // 之前的实现把整个 chunk 当成单个字符和 '\n' 比较，永远不相等，导致回车永远不会被识别，
-    // 脚本会卡住无法继续。这里改成逐字符扫描 chunk，正确处理其中的换行/退格/Ctrl+C。
     const onData = (chunk) => {
       const str = chunk.toString('utf8');
       for (const char of str) {
@@ -114,20 +79,30 @@ async function main() {
   }
 
   const hash = await bcrypt.hash(password, SALT_ROUNDS);
-  const users = loadUsers();
-  const existing = users[username];
+  const database = getDb();
+
+  const existing = database
+    .prepare('SELECT username, avatar FROM users WHERE username = ?')
+    .get(username);
   const isUpdate = Boolean(existing);
-  // 更新已有账号时保留原有头像；新建账号则使用默认头像 /avatar/default.png
-  users[username] = {
-    hash,
-    avatar: (existing && existing.avatar) || DEFAULT_AVATAR,
-  };
-  saveUsers(users);
+  const avatar = (existing && existing.avatar) || DEFAULT_AVATAR;
+
+  database
+    .prepare(
+      `INSERT INTO users (username, hash, avatar) VALUES (?, ?, ?)
+       ON CONFLICT(username) DO UPDATE SET
+         hash = excluded.hash,
+         avatar = COALESCE(users.avatar, excluded.avatar)`
+    )
+    .run(username, hash, avatar);
 
   console.log(`\n${isUpdate ? '已更新' : '已创建'}用户: ${username}`);
-  console.log(`用户信息已保存到: ${USERS_FILE}\n`);
+  console.log(`用户信息已保存到 SQLite: ${DATABASE_PATH}\n`);
 
   rl.close();
 }
 
-main();
+main().catch((err) => {
+  console.error('创建用户失败:', err);
+  process.exit(1);
+});
