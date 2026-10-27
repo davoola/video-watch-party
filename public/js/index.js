@@ -32,7 +32,10 @@ async function loadMe() {
     if (!res.ok) { window.location.href = '/login.html'; return; }
     const data = await res.json();
     myUsername = data.username;
-    meText.textContent = `你好，${myUsername}`;
+    const shown = data.displayName || data.username;
+    meText.textContent = `你好，${shown}`;
+    const adminLink = document.getElementById('adminLink');
+    if (adminLink) adminLink.hidden = data.role !== 'admin';
   } catch {
     window.location.href = '/login.html';
   }
@@ -441,3 +444,24 @@ function escapeAttr(str) {
 
 loadMe();
 browseDir(''); // 从根目录开始
+
+// 用户名下拉：桌面靠 hover 打开（CSS）；触屏/窄屏用点击切换
+(function setupUserMenu() {
+  const menu = document.getElementById('userMenu');
+  const trigger = document.getElementById('meText');
+  if (!menu || !trigger) return;
+
+  trigger.addEventListener('click', (e) => {
+    // 仅在不支持 hover 的场景需要点击；始终允许点击切换，方便触屏
+    e.stopPropagation();
+    const open = menu.classList.toggle('is-open');
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+
+  document.addEventListener('click', () => {
+    if (menu.classList.contains('is-open')) {
+      menu.classList.remove('is-open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+})();

@@ -85,7 +85,7 @@ async function loadMe() {
     }
     const data = await res.json();
     myUsername = data.username;
-    meText.textContent = `你好，${myUsername}`;
+    meText.textContent = `你好，${data.displayName || data.username}`;
   } catch {
     window.location.href = '/login.html';
   }

@@ -83,6 +83,87 @@ button {
   }
 }
 
+
+/* 用户名下拉菜单：悬停/点击展开「个人资料 / 管理后台」 */
+.user-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.user-menu-trigger {
+  background: transparent;
+  border: none;
+  color: #9a9da5;
+  font-size: inherit;
+  font-weight: inherit;
+  padding: 4px 2px;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 1.4;
+}
+
+.user-menu-trigger:hover,
+.user-menu.is-open .user-menu-trigger {
+  color: #e8eaed;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 128px;
+  background: #1a1d24;
+  border: 1px solid #2a2e38;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 6px 0;
+  z-index: 200;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s;
+  pointer-events: none;
+}
+
+/* 桌面：悬停用户名区域时显示 */
+.user-menu:hover .user-menu-dropdown,
+.user-menu.is-open .user-menu-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* 扩大可悬停区域，避免移向菜单时中断 */
+.user-menu::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 10px;
+}
+
+.user-menu-dropdown a {
+  display: block;
+  padding: 8px 14px;
+  color: #d0d3d9;
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.user-menu-dropdown a:hover {
+  background: #242830;
+  color: #fff;
+}
+
+.user-menu-dropdown a[hidden] {
+  display: none !important;
+}
+
+
 /* ---- 通用 Lightbox：全屏查看图片，支持左右/上下键切换、Esc 关闭、点击空白处关闭 ----
    index.html（图片库缩略图）、chat.html（独立聊天室里发的图片）、player.html（播放页
    聊天面板里发的图片）三个页面共用同一套 lightbox 结构和样式，具体交互逻辑见
@@ -1871,3 +1952,186 @@ body.is-resizing-chat {
 /* =========================================================
    播放页结束 (player.html)
    ========================================================= */
+
+/* ---- 个人资料 / 管理后台 ---- */
+.settings-page {
+  max-width: 720px;
+  margin: 24px auto 48px;
+  padding: 0 16px;
+}
+.settings-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: #e8eaed;
+}
+.settings-subtitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: #d0d3d9;
+}
+.settings-card {
+  background: #1a1d24;
+  border: 1px solid #2a2e38;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.settings-card .field {
+  margin-bottom: 14px;
+}
+.settings-card .field label {
+  display: block;
+  font-size: 13px;
+  color: #9a9da5;
+  margin-bottom: 6px;
+}
+.settings-card .field input,
+.settings-card .field select,
+.field-row input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #12151b;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  color: #e8eaed;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.field-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.field-row input {
+  flex: 8 1 0;
+  min-width: 0;
+  width: auto;
+}
+.field-row .btn-primary {
+  flex: 2 1 0;
+  min-width: 72px;
+  width: auto;
+  white-space: nowrap;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.field-hint {
+  font-size: 12px;
+  color: #6b7080;
+  margin: 6px 0 0;
+}
+.avatar-edit-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.avatar-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #2a2e38;
+  border: 2px solid #3a3f4c;
+}
+.avatar-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  vertical-align: middle;
+}
+.success-msg {
+  color: #3dd68c;
+  font-size: 13px;
+  margin-top: 10px;
+  min-height: 1.2em;
+}
+.btn-secondary {
+  background: #2a2e38;
+  color: #e8eaed;
+  border: 1px solid #3a3f4c;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.btn-secondary:hover {
+  background: #343a46;
+}
+.btn-link {
+  background: none;
+  border: none;
+  color: #5a8dee;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 6px;
+}
+.btn-link.danger {
+  color: #f07178;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #2a2e38;
+  color: #d0d3d9;
+}
+.admin-table th {
+  color: #9a9da5;
+  font-weight: 500;
+}
+.admin-table .ops {
+  white-space: nowrap;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+.admin-form-grid .btn-primary {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+@media (max-width: 600px) {
+  .admin-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal[hidden] {
+  display: none !important;
+}
+.modal-card {
+  background: #1a1d24;
+  border: 1px solid #2a2e38;
+  border-radius: 12px;
+  padding: 20px;
+  width: min(420px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}

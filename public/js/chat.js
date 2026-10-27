@@ -28,7 +28,7 @@ async function loadMe() {
     if (!res.ok) { window.location.href = '/login.html'; return; }
     const data = await res.json();
     myUsername = data.username;
-    meText.textContent = `你好，${myUsername}`;
+    meText.textContent = `你好，${data.displayName || data.username}`;
     initSocket();
   } catch {
     window.location.href = '/login.html';

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>管理后台 - 私密影院</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-title-prefix="管理后台">
+  <div class="topbar">
+    <a href="/index.html" class="back-link">← 返回视频库</a>
+    <div class="user-area">
+      <span id="meText"></span>
+    </div>
+  </div>
+
+  <div class="settings-page admin-page">
+    <h1 class="settings-title">管理后台</h1>
+
+    <section class="settings-card">
+      <h2 class="settings-subtitle">站点名称</h2>
+      <div class="field-row">
+        <input type="text" id="siteNameInput" maxlength="40" placeholder="站点名称">
+        <button type="button" class="btn-primary" id="saveSiteNameBtn">保存</button>
+      </div>
+      <div class="error-msg" id="siteNameError"></div>
+      <div class="success-msg" id="siteNameSuccess"></div>
+    </section>
+
+    <section class="settings-card">
+      <h2 class="settings-subtitle">用户管理</h2>
+      <div class="table-wrap">
+        <table class="admin-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>用户名</th>
+              <th>显示名</th>
+              <th>角色</th>
+              <th>头像</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="usersTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <h2 class="settings-subtitle">添加用户</h2>
+      <form id="createUserForm" class="admin-form-grid">
+        <div class="field">
+          <label for="newUsername">用户名</label>
+          <input type="text" id="newUsername" required maxlength="32">
+        </div>
+        <div class="field">
+          <label for="newDisplayName">显示名</label>
+          <input type="text" id="newDisplayName" maxlength="32">
+        </div>
+        <div class="field">
+          <label for="newPassword">密码</label>
+          <input type="password" id="newPassword" required minlength="8">
+        </div>
+        <div class="field">
+          <label for="newRole">角色</label>
+          <select id="newRole">
+            <option value="user">普通用户</option>
+            <option value="admin">管理员</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-primary">创建</button>
+      </form>
+      <div class="error-msg" id="createError"></div>
+      <div class="success-msg" id="createSuccess"></div>
+    </section>
+
+    <div class="error-msg" id="listError"></div>
+  </div>
+
+  <!-- 编辑用户弹层 -->
+  <div class="modal" id="editModal" hidden>
+    <div class="modal-card">
+      <h2 class="settings-subtitle">编辑用户</h2>
+      <form id="editUserForm">
+        <input type="hidden" id="editUsername">
+        <div class="field">
+          <label>用户名</label>
+          <input type="text" id="editUsernameShow" disabled>
+        </div>
+        <div class="field">
+          <label for="editDisplayName">显示名</label>
+          <input type="text" id="editDisplayName" maxlength="32" required>
+        </div>
+        <div class="field">
+          <label for="editRole">角色</label>
+          <select id="editRole">
+            <option value="user">普通用户</option>
+            <option value="admin">管理员</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="editPassword">新密码（留空不改）</label>
+          <input type="password" id="editPassword" minlength="8">
+        </div>
+        <div class="field">
+          <label>头像</label>
+          <div class="avatar-edit-row">
+            <img id="editAvatarPreview" class="avatar-preview" src="/avatar/default.png" alt="">
+            <div>
+              <input type="file" id="editAvatarFile" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+              <button type="button" class="btn-secondary" id="editAvatarPickBtn">上传头像</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="editCancelBtn">取消</button>
+          <button type="submit" class="btn-primary">保存</button>
+        </div>
+        <div class="error-msg" id="editError"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/siteConfig.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

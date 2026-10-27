@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>个人资料 - 私密影院</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-title-prefix="个人资料">
+  <div class="topbar">
+    <a href="/index.html" class="back-link">← 返回视频库</a>
+    <div class="user-area">
+      <span id="meText"></span>
+    </div>
+  </div>
+
+  <div class="settings-page">
+    <h1 class="settings-title">个人资料</h1>
+    <form class="settings-card" id="profileForm">
+      <div class="field">
+        <label>用户名（不可修改）</label>
+        <input type="text" id="username" disabled>
+      </div>
+      <div class="field">
+        <label for="displayName">显示名</label>
+        <input type="text" id="displayName" maxlength="32" required>
+      </div>
+      <div class="field">
+        <label>头像</label>
+        <div class="avatar-edit-row">
+          <img id="avatarPreview" class="avatar-preview" src="/avatar/default.png" alt="头像">
+          <div>
+            <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+            <button type="button" class="btn-secondary" id="avatarPickBtn">选择图片</button>
+            <p class="field-hint">支持 PNG / JPEG / WebP / GIF，最大 2MB</p>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="currentPassword">当前密码（仅修改密码时需要）</label>
+        <input type="password" id="currentPassword" autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="newPassword">新密码（留空则不修改）</label>
+        <input type="password" id="newPassword" autocomplete="new-password" minlength="8">
+      </div>
+      <div class="field">
+        <label for="confirmPassword">确认新密码</label>
+        <input type="password" id="confirmPassword" autocomplete="new-password" minlength="8">
+      </div>
+      <button type="submit" class="btn-primary">保存</button>
+      <div class="error-msg" id="errorMsg"></div>
+      <div class="success-msg" id="successMsg"></div>
+    </form>
+  </div>
+
+  <script src="/js/siteConfig.js"></script>
+  <script src="/js/profile.js"></script>
+</body>
+</html>

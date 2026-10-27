@@ -8,3 +8,6 @@ data/*.db-*
 *.db
 *.db-wal
 *.db-shm
+
+data/user-avatars/
+!data/user-avatars/.gitkeep

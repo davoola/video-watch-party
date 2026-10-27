@@ -27,4 +27,5 @@
   }
 
   applySiteName();
+  window.__applySiteName = applySiteName;
 })();

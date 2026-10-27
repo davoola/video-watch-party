@@ -12,7 +12,8 @@ const { getDb } = require('./db');
 getDb();
 console.log('SQLite 数据库:', config.DATABASE_PATH);
 
-const { router: authRouter, requireAuth, requireAuthPage } = require('./auth');
+const { router: authRouter, requireAuth, requireAuthPage, requireAdminPage } = require('./auth');
+const { router: adminRouter } = require('./admin');
 const videoApiRouter = require('./videoApi');
 const { streamVideo } = require('./videoStream');
 const {
@@ -114,12 +115,14 @@ app.use((req, res, next) => {
 });
 
 // ---- 站点名称配置：不需要登录也能访问，因为登录页本身也要显示站点名称 ----
+const { getSiteName } = require('./siteSettings');
 app.get('/api/site-config', (req, res) => {
-  res.json({ siteName: config.SITE_NAME });
+  res.json({ siteName: getSiteName() });
 });
 
 // ---- 认证相关 API（登录/登出/当前用户） ----
 app.use(authRouter);
+app.use(adminRouter);
 
 // ---- 视频列表 API ----
 app.use(videoApiRouter);
@@ -172,6 +175,14 @@ app.get('/player.html', requireAuthPage, (req, res) => {
 // 但页面本身对未登录用户可见仍然不符合其它页面的鉴权预期，这里补齐保持一致）
 app.get('/chat.html', requireAuthPage, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'chat.html'));
+});
+
+app.get('/profile.html', requireAuthPage, (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'profile.html'));
+});
+
+app.get('/admin.html', requireAdminPage, (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
 });
 
 app.get('/', (req, res) => {

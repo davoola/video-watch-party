@@ -148,10 +148,11 @@ function buildChatMessageElement(data, isSelf) {
   const meta = document.createElement('div');
   meta.className = 'msg-meta';
 
-  const avatarEl = makeAvatar(data.from, data.avatar || null);
+  const showName = data.displayName || data.from;
+  const avatarEl = makeAvatar(showName, data.avatar || null);
   const who = document.createElement('span');
   who.className = 'who';
-  who.textContent = data.from;
+  who.textContent = showName;
 
   // 自己：名字在左、头像在右（由 CSS flex-direction:row-reverse 控制）
   meta.appendChild(avatarEl);
@@ -168,7 +169,7 @@ function buildChatMessageElement(data, isSelf) {
     img.className = 'chat-image';
     img.src = data.imageUrl;
     img.alt = '图片消息';
-    img.dataset.caption = data.from ? `来自 ${data.from}` : '';
+    img.dataset.caption = showName ? `来自 ${showName}` : '';
     img.addEventListener('click', () => openChatImageLightbox(img));
     bubble.appendChild(img);
   } else if (data.type === 'voice') {
@@ -190,7 +191,7 @@ function buildChatMessageElement(data, isSelf) {
     // Markdown 里 ![alt](url) 语法插入的行内图片，也要能点开 lightbox，
     // 和上面直接发送的图片共用同一套"翻遍所有图片"的逻辑。
     bubble.querySelectorAll('img.md-image').forEach((img) => {
-      img.dataset.caption = data.from ? `来自 ${data.from}` : '';
+      img.dataset.caption = showName ? `来自 ${showName}` : '';
       img.addEventListener('click', () => openChatImageLightbox(img));
     });
   }

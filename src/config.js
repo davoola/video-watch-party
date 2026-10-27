@@ -22,6 +22,9 @@ const DATABASE_PATH = (() => {
 // 不设置的话保留原来的默认值"私密影院"，不影响现有部署。
 const SITE_NAME = process.env.SITE_NAME || '私密影院';
 
+const siteSettings = require('./siteSettings');
+siteSettings.initSiteName(SITE_NAME);
+
 // 是否信任反向代理（nginx/Caddy 等）传来的 X-Forwarded-* 头。
 // 只有在确实有反向代理挡在前面时才应该开启——否则客户端可以直接伪造这些头，
 // 冒充任意 IP 或冒充 HTTPS 连接，带来安全隐患。

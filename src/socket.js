@@ -185,6 +185,7 @@ function initSocket(io) {
   function rowToMessage(row) {
     const msg = {
       from: row.from_user,
+      displayName: row.display_name || row.from_user,
       avatar: row.avatar || null,
       type: row.type,
       ts: row.ts,
@@ -205,8 +206,8 @@ function initSocket(io) {
       getDb()
         .prepare(
           `INSERT INTO chat_messages
-            (room_id, from_user, avatar, type, text, image_url, audio_url, duration_sec, ts)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            (room_id, from_user, avatar, type, text, image_url, audio_url, duration_sec, ts, display_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           LOBBY_CHAT_ROOM,
@@ -217,7 +218,8 @@ function initSocket(io) {
           msg.type === 'image' ? msg.imageUrl || null : null,
           msg.type === 'voice' ? msg.audioUrl || null : null,
           msg.type === 'voice' ? msg.durationSec || 0 : null,
-          msg.ts
+          msg.ts,
+          msg.displayName || msg.from || null
         );
     } catch (err) {
       console.error('保存聊天室消息到数据库失败:', err.message);
@@ -232,7 +234,7 @@ function initSocket(io) {
       if (beforeTs != null && Number.isFinite(beforeTs)) {
         rows = getDb()
           .prepare(
-            `SELECT from_user, avatar, type, text, image_url, audio_url, duration_sec, ts
+            `SELECT from_user, avatar, type, text, image_url, audio_url, duration_sec, ts, display_name
              FROM chat_messages
              WHERE room_id = ? AND ts < ?
              ORDER BY ts DESC, id DESC
@@ -242,7 +244,7 @@ function initSocket(io) {
       } else {
         rows = getDb()
           .prepare(
-            `SELECT from_user, avatar, type, text, image_url, audio_url, duration_sec, ts
+            `SELECT from_user, avatar, type, text, image_url, audio_url, duration_sec, ts, display_name
              FROM chat_messages
              WHERE room_id = ?
              ORDER BY ts DESC, id DESC
@@ -312,6 +314,7 @@ function initSocket(io) {
   io.on('connection', (socket) => {
     const username = socket.request.session.user;
     const avatar = socket.request.session.avatar || null;
+    const displayName = socket.request.session.displayName || username;
 
     socket.join(LOBBY_ROOM);
 
@@ -371,7 +374,7 @@ function initSocket(io) {
           io.to(r).emit('room-presence', { members: getRoomMembers(r) });
           if (fullyLeft) {
             socket.to(r).emit('chat-system', {
-              text: `${username} 离开了${roomLabel(r)}`,
+              text: `${displayName} 离开了${roomLabel(r)}`,
               ts: Date.now(),
             });
           }
@@ -385,7 +388,7 @@ function initSocket(io) {
       io.to(room).emit('room-presence', { members: getRoomMembers(room) });
 
       socket.to(room).emit('chat-system', {
-        text: `${username} 加入了${roomLabel(room)}`,
+        text: `${displayName} 加入了${roomLabel(room)}`,
         ts: Date.now(),
       });
 
@@ -485,6 +488,7 @@ function initSocket(io) {
 
         const msg = {
           from: username,
+          displayName,
           avatar,
           type: 'image',
           imageUrl: `/chat-image/${filename}`,
@@ -507,6 +511,7 @@ function initSocket(io) {
 
         const msg = {
           from: username,
+          displayName,
           avatar,
           type: 'voice',
           audioUrl: `/chat-voice/${filename}`,
@@ -527,6 +532,7 @@ function initSocket(io) {
 
       const msg = {
         from: username,
+        displayName,
         avatar,
         type: 'text',
         text: trimmed,
@@ -545,7 +551,7 @@ function initSocket(io) {
           // 只有这个用户在房间里的所有连接都断开了，才广播"离开了..."，
           // 避免同一个人开着两个标签页时，关掉其中一个就被误判成"离开"（见上面的说明）。
           io.to(room).emit('chat-system', {
-            text: `${username} 离开了${roomLabel(room)}`,
+            text: `${displayName} 离开了${roomLabel(room)}`,
             ts: Date.now(),
           });
         }
