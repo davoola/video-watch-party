@@ -2129,9 +2129,61 @@ body.is-resizing-chat {
   max-height: 90vh;
   overflow-y: auto;
 }
+.modal-card .field {
+  margin-bottom: 14px;
+}
+.modal-card .field label {
+  display: block;
+  font-size: 13px;
+  color: #9a9da5;
+  margin-bottom: 6px;
+}
+.modal-card .field input,
+.modal-card .field select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #12151b;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  color: #e8eaed;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.modal-card .field-inline > label {
+  display: block;
+  margin-bottom: 0;
+}
+/* 表单项：标签与控件同一行（编辑用户「角色」） */
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.field-inline > label {
+  margin-bottom: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.field-inline > select,
+.field-inline > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
 .modal-actions {
   display: flex;
   gap: 10px;
-  justify-content: flex-end;
-  margin-top: 8px;
+  justify-content: stretch;
+  margin-top: 16px;
+}
+.modal-actions .btn-secondary,
+.modal-actions .btn-primary {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
 }
