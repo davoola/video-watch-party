@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<title>日志审计 - 私密影院</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-title-prefix="日志审计">
+  <div class="topbar">
+    <a href="/index.html" class="back-link">← 返回视频库</a>
+    <div class="user-area">
+      <span id="meText"></span>
+    </div>
+  </div>
+
+  <div class="settings-page admin-page audit-page">
+    <h1 class="settings-title">日志审计</h1>
+    <section class="settings-card">
+      <div class="audit-toolbar">
+        <span id="auditTotal" class="field-hint">共 0 条</span>
+        <button type="button" class="btn-secondary" id="refreshAuditBtn">刷新</button>
+      </div>
+      <div class="table-wrap">
+        <table class="admin-table audit-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>时间</th>
+              <th>操作人</th>
+              <th>动作</th>
+              <th>对象类型</th>
+              <th>摘要</th>
+              <th>IP</th>
+            </tr>
+          </thead>
+          <tbody id="auditTbody">
+            <tr><td colspan="7" class="empty-state">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="audit-pager">
+        <button type="button" class="btn-secondary" id="prevPageBtn">上一页</button>
+        <span id="pageInfo" class="field-hint">1</span>
+        <button type="button" class="btn-secondary" id="nextPageBtn">下一页</button>
+      </div>
+      <div class="error-msg" id="auditError"></div>
+    </section>
+  </div>
+
+  <script src="/js/siteConfig.js"></script>
+  <script src="/js/audit.js"></script>
+</body>
+</html>

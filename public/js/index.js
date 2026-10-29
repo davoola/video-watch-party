@@ -34,8 +34,11 @@ async function loadMe() {
     myUsername = data.username;
     const shown = data.displayName || data.username;
     meText.textContent = `你好，${shown}`;
+    const isAdmin = data.role === 'admin';
     const adminLink = document.getElementById('adminLink');
-    if (adminLink) adminLink.hidden = data.role !== 'admin';
+    const auditLink = document.getElementById('auditLink');
+    if (adminLink) adminLink.hidden = !isAdmin;
+    if (auditLink) auditLink.hidden = !isAdmin;
   } catch {
     window.location.href = '/login.html';
   }

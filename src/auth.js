@@ -5,6 +5,7 @@ const {
   updateUser,
   validatePassword,
 } = require('./users');
+const { writeAuditLog, getClientIp } = require('./auditLog');
 
 const router = express.Router();
 
@@ -129,6 +130,13 @@ router.post('/api/login', async (req, res) => {
         return res.status(500).json({ error: '服务器错误，请稍后重试' });
       }
       fillSessionUser(req.session, userData);
+      writeAuditLog({
+        actor: userData.username,
+        action: 'login',
+        objectType: 'session',
+        summary: `用户登录（显示名：${userData.displayName || userData.username}）`,
+        ip: getClientIp(req),
+      });
       res.json({
         ok: true,
         username: userData.username,
@@ -144,7 +152,18 @@ router.post('/api/login', async (req, res) => {
 });
 
 router.post('/api/logout', (req, res) => {
+  const actor = req.session && req.session.user;
+  const ip = getClientIp(req);
   req.session.destroy(() => {
+    if (actor) {
+      writeAuditLog({
+        actor,
+        action: 'logout',
+        objectType: 'session',
+        summary: '用户退出登录',
+        ip,
+      });
+    }
     res.json({ ok: true });
   });
 });

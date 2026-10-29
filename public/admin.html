@@ -74,6 +74,33 @@
       <div class="success-msg" id="createSuccess"></div>
     </section>
 
+    <section class="settings-card">
+      <h2 class="settings-subtitle">日志清理</h2>
+      <p class="field-hint">删除审计日志以释放空间。清理操作本身也会记入日志。</p>
+      <div class="field-row admin-maint-row">
+        <select id="purgeDaysSelect">
+          <option value="7">删除 7 天前</option>
+          <option value="30" selected>删除 30 天前</option>
+          <option value="90">删除 90 天前</option>
+          <option value="0">清空全部日志</option>
+        </select>
+        <button type="button" class="btn-secondary" id="purgeLogsBtn">清理日志</button>
+      </div>
+      <div class="error-msg" id="purgeError"></div>
+      <div class="success-msg" id="purgeSuccess"></div>
+    </section>
+
+    <section class="settings-card">
+      <h2 class="settings-subtitle">数据库维护</h2>
+      <p class="field-hint">「写入主文件」将 WAL 合并进主库；「备份数据库」会先合并，再复制到 BACKUP_DIR（默认 data/backups），文件名为 原库名-年月日.db。</p>
+      <div class="modal-actions admin-maint-actions">
+        <button type="button" class="btn-secondary" id="checkpointBtn">写入主文件</button>
+        <button type="button" class="btn-primary" id="backupDbBtn">备份数据库</button>
+      </div>
+      <div class="error-msg" id="dbMaintError"></div>
+      <div class="success-msg" id="dbMaintSuccess"></div>
+    </section>
+
     <div class="error-msg" id="listError"></div>
   </div>
 

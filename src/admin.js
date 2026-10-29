@@ -13,6 +13,9 @@ const {
   DEFAULT_AVATAR,
 } = require('./users');
 const { getSiteName, setSiteName } = require('./siteSettings');
+const { listAuditLogs, purgeAuditLogs, writeAuditLog, getClientIp } = require('./auditLog');
+const { DATABASE_PATH, BACKUP_DIR } = require('./config');
+const { getDb } = require('./db');
 
 const router = express.Router();
 
@@ -157,6 +160,90 @@ router.get('/user-avatar/:filename', requireAuth, (req, res) => {
     return res.status(404).json({ error: '文件不存在' });
   }
   res.sendFile(filePath);
+});
+
+
+// ---- 审计日志 ----
+router.get('/api/admin/audit-logs', requireAdmin, (req, res) => {
+  try {
+    const limit = req.query.limit;
+    const offset = req.query.offset;
+    const data = listAuditLogs({ limit, offset });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message || '读取失败' });
+  }
+});
+
+// body: { days?: number }  days>0 删除 N 天前；不传或 days=0 清空全部
+router.post('/api/admin/audit-logs/purge', requireAdmin, (req, res) => {
+  try {
+    const days = parseInt((req.body || {}).days, 10);
+    let beforeTs = null;
+    let summary = '清空全部审计日志';
+    if (Number.isFinite(days) && days > 0) {
+      beforeTs = Date.now() - days * 24 * 60 * 60 * 1000;
+      summary = `清理 ${days} 天前的审计日志`;
+    }
+    const deleted = purgeAuditLogs(beforeTs);
+    writeAuditLog({
+      actor: req.session.user,
+      action: 'purge_logs',
+      objectType: 'audit',
+      summary: `${summary}（删除 ${deleted} 条）`,
+      ip: getClientIp(req),
+    });
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(400).json({ error: err.message || '清理失败' });
+  }
+});
+
+// WAL 合并进主库
+router.post('/api/admin/db/checkpoint', requireAdmin, (req, res) => {
+  try {
+    const result = getDb().pragma('wal_checkpoint(TRUNCATE)');
+    writeAuditLog({
+      actor: req.session.user,
+      action: 'db_checkpoint',
+      objectType: 'database',
+      summary: '写入主文件（WAL checkpoint TRUNCATE）',
+      ip: getClientIp(req),
+    });
+    res.json({ ok: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'checkpoint 失败' });
+  }
+});
+
+// 先 checkpoint，再备份到 BACKUP_DIR/原库名-YYYYMMDD.db
+router.post('/api/admin/db/backup', requireAdmin, (req, res) => {
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    getDb().pragma('wal_checkpoint(TRUNCATE)');
+
+    const base = path.basename(DATABASE_PATH, path.extname(DATABASE_PATH)) || 'private-cinema';
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const destName = `${base}-${y}${m}${d}.db`;
+    const destPath = path.join(BACKUP_DIR, destName);
+
+    fs.copyFileSync(DATABASE_PATH, destPath);
+
+    writeAuditLog({
+      actor: req.session.user,
+      action: 'db_backup',
+      objectType: 'database',
+      summary: `备份数据库到 ${destPath}`,
+      ip: getClientIp(req),
+    });
+    res.json({ ok: true, path: destPath, file: destName });
+  } catch (err) {
+    console.error('备份数据库失败:', err);
+    res.status(500).json({ error: err.message || '备份失败' });
+  }
 });
 
 module.exports = { router, AVATAR_DIR };

@@ -10,6 +10,7 @@ const { isValidChatImageFilename, isValidChatVoiceFilename } = require('./chatUp
 const { resolveVideoPath } = require('./videoScanner');
 const { CHAT_IMAGE_RETENTION_DAYS } = require('./config');
 const { getDb } = require('./db');
+const { writeAuditLog, getSocketIp } = require('./auditLog');
 
 const ROOM_PREFIX = 'video:';
 const LOBBY_ROOM = 'lobby';
@@ -377,6 +378,16 @@ function initSocket(io) {
               text: `${displayName} 离开了${roomLabel(r)}`,
               ts: Date.now(),
             });
+            {
+              const isChat = isLobbyChatRoom(r);
+              writeAuditLog({
+                actor: username,
+                action: isChat ? 'leave_chat' : 'leave_video',
+                objectType: isChat ? 'chat' : 'video',
+                summary: isChat ? '离开独立聊天室' : '离开视频页',
+                ip: getSocketIp(socket),
+              });
+            }
           }
         }
       }
@@ -391,6 +402,19 @@ function initSocket(io) {
         text: `${displayName} 加入了${roomLabel(room)}`,
         ts: Date.now(),
       });
+
+      // 审计：进入视频页或独立聊天室（同一用户多标签重复进入不重复记，仅当该用户此前不在本房间时）
+      // addMember 已在上面调用；用「本连接刚加入」记一次即可，避免刷屏：每个 socket 每次 join 记一条
+      {
+        const isChat = isLobbyChatRoom(room);
+        writeAuditLog({
+          actor: username,
+          action: isChat ? 'enter_chat' : 'enter_video',
+          objectType: isChat ? 'chat' : 'video',
+          summary: isChat ? '进入独立聊天室' : `进入视频页：${videoName}`,
+          ip: getSocketIp(socket),
+        });
+      }
 
       // 把这个房间最近的聊天记录发给刚加入的这一个连接（不广播给其他人，他们早就看过了）
       // 独立聊天室：优先从 SQLite 读取（跨重启保留）；视频房间：仍只用内存记录
@@ -554,6 +578,16 @@ function initSocket(io) {
             text: `${displayName} 离开了${roomLabel(room)}`,
             ts: Date.now(),
           });
+          {
+            const isChat = isLobbyChatRoom(room);
+            writeAuditLog({
+              actor: username,
+              action: isChat ? 'leave_chat' : 'leave_video',
+              objectType: isChat ? 'chat' : 'video',
+              summary: isChat ? '离开独立聊天室' : '离开视频页',
+              ip: getSocketIp(socket),
+            });
+          }
         }
         socketCurrentRoom.delete(socket.id);
       }

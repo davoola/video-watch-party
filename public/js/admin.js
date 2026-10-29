@@ -224,3 +224,66 @@ document.getElementById('editUserForm').addEventListener('submit', async (e) => 
   await loadSiteName();
   await loadUsers();
 })();
+
+
+// ---- 日志清理 / 数据库维护 ----
+document.getElementById('purgeLogsBtn').addEventListener('click', async () => {
+  const purgeError = document.getElementById('purgeError');
+  const purgeSuccess = document.getElementById('purgeSuccess');
+  purgeError.textContent = '';
+  purgeSuccess.textContent = '';
+  const days = parseInt(document.getElementById('purgeDaysSelect').value, 10);
+  const msg = days > 0 ? `确定删除 ${days} 天前的审计日志？` : '确定清空全部审计日志？此操作不可恢复。';
+  if (!confirm(msg)) return;
+  try {
+    const res = await fetch('/api/admin/audit-logs/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      purgeError.textContent = data.error || '清理失败';
+      return;
+    }
+    purgeSuccess.textContent = `已删除 ${data.deleted} 条日志`;
+  } catch {
+    purgeError.textContent = '网络错误';
+  }
+});
+
+document.getElementById('checkpointBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('dbMaintError');
+  const okEl = document.getElementById('dbMaintSuccess');
+  errEl.textContent = '';
+  okEl.textContent = '';
+  try {
+    const res = await fetch('/api/admin/db/checkpoint', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || '操作失败';
+      return;
+    }
+    okEl.textContent = '已将 WAL 合并写入主文件';
+  } catch {
+    errEl.textContent = '网络错误';
+  }
+});
+
+document.getElementById('backupDbBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('dbMaintError');
+  const okEl = document.getElementById('dbMaintSuccess');
+  errEl.textContent = '';
+  okEl.textContent = '';
+  try {
+    const res = await fetch('/api/admin/db/backup', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || '备份失败';
+      return;
+    }
+    okEl.textContent = `备份成功：${data.file || data.path}`;
+  } catch {
+    errEl.textContent = '网络错误';
+  }
+});

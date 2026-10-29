@@ -18,6 +18,15 @@ const DATABASE_PATH = (() => {
   return path.isAbsolute(raw) ? raw : path.join(__dirname, '..', raw);
 })();
 
+// 数据库备份目录：管理员「备份数据库」写入此处。相对路径相对项目根；默认 data/backups
+const BACKUP_DIR = (() => {
+  const raw = (process.env.BACKUP_DIR || '').trim();
+  if (!raw) {
+    return path.join(__dirname, '..', 'data', 'backups');
+  }
+  return path.isAbsolute(raw) ? raw : path.join(__dirname, '..', raw);
+})();
+
 // 站点名称：显示在浏览器标签页标题、首页顶部品牌区等位置。
 // 不设置的话保留原来的默认值"私密影院"，不影响现有部署。
 const SITE_NAME = process.env.SITE_NAME || '私密影院';
@@ -82,6 +91,7 @@ module.exports = {
   NODE_ENV,
   USERS_FILE,
   DATABASE_PATH,
+  BACKUP_DIR,
   CHAT_UPLOAD_DIR,
   THUMBNAIL_DIR,
   TRUST_PROXY,

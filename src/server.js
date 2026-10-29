@@ -185,6 +185,10 @@ app.get('/admin.html', requireAdminPage, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
 });
 
+app.get('/audit.html', requireAdminPage, (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'audit.html'));
+});
+
 app.get('/', (req, res) => {
   res.redirect(req.session && req.session.user ? '/index.html' : '/login.html');
 });

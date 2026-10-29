@@ -11,3 +11,6 @@ data/*.db-*
 
 data/user-avatars/
 !data/user-avatars/.gitkeep
+
+data/backups/
+!data/backups/.gitkeep

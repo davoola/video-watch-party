@@ -2187,3 +2187,48 @@ body.is-resizing-chat {
   font-size: 14px;
   box-sizing: border-box;
 }
+
+/* ---- 日志审计 ---- */
+.audit-toolbar,
+.audit-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.audit-pager {
+  margin-top: 12px;
+  margin-bottom: 0;
+  justify-content: center;
+}
+.audit-table {
+  font-size: 12px;
+}
+.audit-table th,
+.audit-table td {
+  vertical-align: top;
+}
+.audit-summary {
+  max-width: 280px;
+  word-break: break-word;
+}
+.admin-maint-row select {
+  flex: 8 1 0;
+  min-width: 0;
+  width: auto;
+  box-sizing: border-box;
+  background: #12151b;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  color: #e8eaed;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.admin-maint-row .btn-secondary {
+  flex: 2 1 0;
+  white-space: nowrap;
+}
+.admin-maint-actions {
+  margin-top: 4px;
+}

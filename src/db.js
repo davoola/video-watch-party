@@ -40,6 +40,18 @@ function getDb() {
 
     CREATE INDEX IF NOT EXISTS idx_chat_messages_room_ts
       ON chat_messages(room_id, ts);
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      actor TEXT NOT NULL,
+      action TEXT NOT NULL,
+      object_type TEXT,
+      summary TEXT,
+      ip TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_ts ON audit_logs(ts DESC);
   `);
 
   migrateUsersSchema();
